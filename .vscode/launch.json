@@ -1,21 +1,26 @@
 {
-  "version": "0.2.0",
-  "configurations": [
-    {
-      "name": "Python: Train",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/diffusion_policy/train.py",
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "justMyCode": true,
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/.."
-      },
-      "args": [
-        "--config-name",
-        "train"
-      ]
-    }
-  ]
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Train 3D Diffusion Policy",
+            "type": "python",
+            "request": "launch",
+            "module": "reworked_diffusion_policy.train",
+            "justMyCode": false,
+            "args": [
+                "--dataset_path",
+                "/media/davidknigge/hard-disk2/storage/robotics/rlbench_20tasks_100episodes_preprocessed/temporal/play_jenga/0c2a008a21871c72c1f26e10c3e738960d4610a8.h5",
+                "--device",
+                "cuda",
+                "--batch_size",
+                "64",
+                "--epochs",
+                "300"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal"
+        }
+    ]
 }
