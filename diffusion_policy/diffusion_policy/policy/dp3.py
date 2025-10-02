@@ -10,7 +10,6 @@ import copy
 import time
 # import pytorch3d.ops as torch3d_ops
 
-from diffusion_policy.model.common.normalizer import LinearNormalizer
 from diffusion_policy.policy.base_policy import BasePolicy
 from diffusion_policy.model.diffusion.conditional_unet1d import ConditionalUnet1D
 from diffusion_policy.model.diffusion.mask_generator import LowdimMaskGenerator
@@ -170,14 +169,12 @@ class DP3(BasePolicy):
 
         return trajectory
 
-
     def predict_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
         result: must include "action" key
         """
-        # normalize input
-        nobs = self.normalizer.normalize(obs_dict)
+        nobs = obs_dict
         # this_n_point_cloud = nobs['imagin_robot'][..., :3] # only use coordinate
         if not self.use_pc_color:
             nobs['point_cloud'] = nobs['point_cloud'][..., :3]
@@ -232,7 +229,7 @@ class DP3(BasePolicy):
         
         # unnormalize prediction
         naction_pred = nsample[...,:Da]
-        action_pred = self.normalizer['action'].unnormalize(naction_pred)
+        action_pred = naction_pred
 
         # get action
         start = To - 1
@@ -250,7 +247,6 @@ class DP3(BasePolicy):
         return result
 
     def compute_loss(self, batch):
-        # normalize input
 
         nobs = batch['observation']
         nactions = batch['action']
@@ -261,7 +257,6 @@ class DP3(BasePolicy):
         batch_size = nactions.shape[0]
         horizon = nactions.shape[1]
 
-        # handle different ways of passing observation
         local_cond = None
         global_cond = None
         trajectory = nactions
