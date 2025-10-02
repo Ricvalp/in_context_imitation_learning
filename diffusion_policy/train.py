@@ -25,12 +25,13 @@ import time
 import threading
 from hydra.core.hydra_config import HydraConfig
 from diffusion_policy.policy.dp3 import DP3
-from diffusion_policy.dataset.base_dataset import BaseDataset
 from diffusion_policy.env_runner.base_runner import BaseRunner
 from diffusion_policy.common.checkpoint_util import TopKCheckpointManager
 from diffusion_policy.common.pytorch_util import dict_apply, optimizer_to
 from diffusion_policy.model.diffusion.ema_model import EMAModel
 from diffusion_policy.model.common.lr_scheduler import get_scheduler
+from diffusion_policy.dataset.imitation_learning.cached_dataset import TemporalPointCloudCachedDataset
+
 
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 
@@ -96,21 +97,15 @@ class Train:
                 print(f"Resuming from checkpoint {lastest_ckpt_path}")
                 self.load_checkpoint(path=lastest_ckpt_path)
 
-        # configure dataset
-        dataset: BaseDataset
-        dataset = hydra.utils.instantiate(cfg.task.dataset)
-
-        assert isinstance(dataset, BaseDataset), print(f"dataset must be BaseDataset, got {type(dataset)}")
+        dataset = TemporalPointCloudCachedDataset(
+                cache_path=cfg.cache_path,
+            )
         train_dataloader = DataLoader(dataset, **cfg.dataloader)
-        normalizer = dataset.get_normalizer()
 
-        # configure validation dataset
-        val_dataset = dataset.get_validation_dataset()
+        val_dataset = TemporalPointCloudCachedDataset(
+                cache_path=cfg.cache_path,
+            )
         val_dataloader = DataLoader(val_dataset, **cfg.val_dataloader)
-
-        self.model.set_normalizer(normalizer)
-        if cfg.training.use_ema:
-            self.ema_model.set_normalizer(normalizer)
 
         # configure lr scheduler
         lr_scheduler = get_scheduler(
@@ -133,13 +128,13 @@ class Train:
                 model=self.ema_model)
 
         # configure env
-        env_runner: BaseRunner
-        env_runner = hydra.utils.instantiate(
-            cfg.task.env_runner,
-            output_dir=self.output_dir)
+        # env_runner: BaseRunner
+        # env_runner = hydra.utils.instantiate(
+        #     cfg.task.env_runner,
+        #     output_dir=self.output_dir)
 
-        if env_runner is not None:
-            assert isinstance(env_runner, BaseRunner)
+        # if env_runner is not None:
+        #     assert isinstance(env_runner, BaseRunner)
         
         cfg.logging.name = str(cfg.logging.name)
         cprint("-----------------------------", "yellow")
@@ -173,7 +168,6 @@ class Train:
 
         # save batch for sampling
         train_sampling_batch = None
-
 
         # training loop
         log_path = os.path.join(self.output_dir, 'logs.json.txt')
@@ -496,7 +490,7 @@ class Train:
 @hydra.main(
     version_base=None,
     config_path=str(pathlib.Path(__file__).parent.joinpath(
-        'diffusion_policy_3d', 'config'))
+        'diffusion_policy', 'config'))
 )
 def main(cfg):
     workspace = Train(cfg)

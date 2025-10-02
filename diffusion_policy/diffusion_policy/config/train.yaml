@@ -1,7 +1,7 @@
 defaults:
   - task: adroit_hammer
 
-name: train_dp3
+name: train
 
 task_name: ${task.name}
 shape_meta: ${task.shape_meta}
@@ -17,8 +17,10 @@ dataset_obs_steps: ${n_obs_steps}
 keypoint_visible_rate: 1.0
 obs_as_global_cond: True
 
+cache_path: /mnt/external_storage/robotics/rlbench/temporal/close_drawer/42ac11cdf83fe09eb455ebc06db2c6176f6e7666.h5
+
 policy:
-  _target_: diffusion_policy_3d.policy.dp3.DP3
+  _target_: diffusion_policy.policy.dp3.DP3
   use_point_crop: true
   condition_type: film
   use_down_condition: true
@@ -69,7 +71,7 @@ policy:
 
 
 ema:
-  _target_: diffusion_policy_3d.model.diffusion.ema_model.EMAModel
+  _target_: diffusion_policy.model.diffusion.ema_model.EMAModel
   update_after_step: 0
   inv_gamma: 1.0
   power: 0.75
@@ -78,7 +80,7 @@ ema:
 
 dataloader:
   batch_size: 128
-  num_workers: 8
+  num_workers: 1
   shuffle: True
   pin_memory: True
   persistent_workers: False

@@ -10,13 +10,13 @@ import copy
 import time
 # import pytorch3d.ops as torch3d_ops
 
-from diffusion_policy_3d.model.common.normalizer import LinearNormalizer
-from diffusion_policy_3d.policy.base_policy import BasePolicy
-from diffusion_policy_3d.model.diffusion.conditional_unet1d import ConditionalUnet1D
-from diffusion_policy_3d.model.diffusion.mask_generator import LowdimMaskGenerator
-from diffusion_policy_3d.common.pytorch_util import dict_apply
-from diffusion_policy_3d.common.model_util import print_params
-from diffusion_policy_3d.model.vision.pointnet_extractor import DP3Encoder
+from diffusion_policy.model.common.normalizer import LinearNormalizer
+from diffusion_policy.policy.base_policy import BasePolicy
+from diffusion_policy.model.diffusion.conditional_unet1d import ConditionalUnet1D
+from diffusion_policy.model.diffusion.mask_generator import LowdimMaskGenerator
+from diffusion_policy.common.pytorch_util import dict_apply
+from diffusion_policy.common.model_util import print_params
+from diffusion_policy.model.vision.pointnet_extractor import DP3Encoder
 
 class DP3(BasePolicy):
     def __init__(self, 
@@ -86,7 +86,6 @@ class DP3(BasePolicy):
         cprint(f"[DiffusionUnetHybridPointcloudPolicy] pointnet_type: {self.pointnet_type}", "yellow")
 
 
-
         model = ConditionalUnet1D(
             input_dim=input_dim,
             local_cond_dim=None,
@@ -115,7 +114,6 @@ class DP3(BasePolicy):
             action_visible=False
         )
         
-        self.normalizer = LinearNormalizer()
         self.horizon = horizon
         self.obs_feature_dim = obs_feature_dim
         self.action_dim = action_dim
@@ -127,7 +125,6 @@ class DP3(BasePolicy):
         if num_inference_steps is None:
             num_inference_steps = noise_scheduler.config.num_train_timesteps
         self.num_inference_steps = num_inference_steps
-
 
         print_params(self)
         
@@ -252,15 +249,11 @@ class DP3(BasePolicy):
         
         return result
 
-    # ========= training  ============
-    def set_normalizer(self, normalizer: LinearNormalizer):
-        self.normalizer.load_state_dict(normalizer.state_dict())
-
     def compute_loss(self, batch):
         # normalize input
 
-        nobs = self.normalizer.normalize(batch['obs'])
-        nactions = self.normalizer['action'].normalize(batch['action'])
+        nobs = batch['observation']
+        nactions = batch['action']
 
         if not self.use_pc_color:
             nobs['point_cloud'] = nobs['point_cloud'][..., :3]
@@ -273,8 +266,6 @@ class DP3(BasePolicy):
         global_cond = None
         trajectory = nactions
         cond_data = trajectory
-        
-       
         
         if self.obs_as_global_cond:
             # reshape B, T, ... to B*T
@@ -321,7 +312,6 @@ class DP3(BasePolicy):
             trajectory, noise, timesteps)
         
 
-
         # compute loss mask
         loss_mask = ~condition_mask
 
@@ -330,10 +320,12 @@ class DP3(BasePolicy):
 
         # Predict the noise residual
         
-        pred = self.model(sample=noisy_trajectory, 
-                        timestep=timesteps, 
-                            local_cond=local_cond, 
-                            global_cond=global_cond)
+        pred = self.model(
+            sample=noisy_trajectory, 
+            timestep=timesteps, 
+            local_cond=local_cond, 
+            global_cond=global_cond
+            )
 
 
         pred_type = self.noise_scheduler.config.prediction_type 
@@ -365,12 +357,6 @@ class DP3(BasePolicy):
         loss_dict = {
                 'bc_loss': loss.item(),
             }
-
-        # print(f"t2-t1: {t2-t1:.3f}")
-        # print(f"t3-t2: {t3-t2:.3f}")
-        # print(f"t4-t3: {t4-t3:.3f}")
-        # print(f"t5-t4: {t5-t4:.3f}")
-        # print(f"t6-t5: {t6-t5:.3f}")
         
         return loss, loss_dict
 

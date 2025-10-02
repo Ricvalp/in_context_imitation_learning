@@ -2,10 +2,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Train DP3",
+      "name": "Python: Train",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/diffusion_policy/diffusion_policy/train.py",
+      "program": "${workspaceFolder}/diffusion_policy/train.py",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "justMyCode": true,
@@ -14,7 +14,7 @@
       },
       "args": [
         "--config-name",
-        "dp3"
+        "train"
       ]
     }
   ]

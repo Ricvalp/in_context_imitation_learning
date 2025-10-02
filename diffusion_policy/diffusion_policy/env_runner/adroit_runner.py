@@ -2,15 +2,15 @@ import wandb
 import numpy as np
 import torch
 import tqdm
-from diffusion_policy_3d.env import AdroitEnv
-from diffusion_policy_3d.gym_util.mjpc_diffusion_wrapper import MujocoPointcloudWrapperAdroit
-from diffusion_policy_3d.gym_util.multistep_wrapper import MultiStepWrapper
-from diffusion_policy_3d.gym_util.video_recording_wrapper import SimpleVideoRecordingWrapper
+from diffusion_policy.env import AdroitEnv
+from diffusion_policy.gym_util.mjpc_diffusion_wrapper import MujocoPointcloudWrapperAdroit
+from diffusion_policy.gym_util.multistep_wrapper import MultiStepWrapper
+from diffusion_policy.gym_util.video_recording_wrapper import SimpleVideoRecordingWrapper
 
-from diffusion_policy_3d.policy.base_policy import BasePolicy
-from diffusion_policy_3d.common.pytorch_util import dict_apply
-from diffusion_policy_3d.env_runner.base_runner import BaseRunner
-import diffusion_policy_3d.common.logger_util as logger_util
+from diffusion_policy.policy.base_policy import BasePolicy
+from diffusion_policy.common.pytorch_util import dict_apply
+from diffusion_policy.env_runner.base_runner import BaseRunner
+import diffusion_policy.common.logger_util as logger_util
 from termcolor import cprint
 
 
