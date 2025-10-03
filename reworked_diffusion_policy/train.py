@@ -47,6 +47,7 @@ flags.DEFINE_bool("enable_viser", None, "Enable viser visualization during eval"
 flags.DEFINE_string("device", None, "Device to train on (cpu or cuda)" )
 flags.DEFINE_string("checkpoint_dir", None, "Override checkpoint directory")
 flags.DEFINE_integer("checkpoint_interval", None, "Override checkpoint save interval")
+flags.DEFINE_multi_string("task", [], "RLBench task names to include when reading datasets")
 
 
 def _apply_overrides(cfg: ConfigDict) -> ConfigDict:
@@ -76,6 +77,8 @@ def _apply_overrides(cfg: ConfigDict) -> ConfigDict:
         cfg.checkpoint.dir = FLAGS.checkpoint_dir
     if FLAGS.checkpoint_interval is not None:
         cfg.checkpoint.save_every = max(0, FLAGS.checkpoint_interval)
+    if FLAGS.task:
+        cfg.tasks = tuple(FLAGS.task)
     return cfg
 
 
@@ -90,13 +93,13 @@ def build_dataloaders(cfg: ConfigDict):
         n_obs_steps=cfg.n_obs_steps,
         action_horizon=cfg.horizon,
         use_point_colors=cfg.use_point_colors,
+        task_names=tuple(cfg.tasks or ()),
     )
 
-    train_dataset = RLBenchTemporalH5Dataset(dataset_cfg)
-    eval_dataset = RLBenchTemporalH5Dataset(dataset_cfg)
+    dataset = RLBenchTemporalH5Dataset(dataset_cfg)
 
     train_loader = DataLoader(
-        train_dataset,
+        dataset,
         batch_size=cfg.batch_size,
         shuffle=cfg.shuffle,
         num_workers=cfg.num_workers,
@@ -106,7 +109,7 @@ def build_dataloaders(cfg: ConfigDict):
     )
 
     eval_loader = DataLoader(
-        eval_dataset,
+        dataset,
         batch_size=cfg.batch_size,
         shuffle=False,
         num_workers=max(0, cfg.num_workers // 2),
@@ -115,7 +118,7 @@ def build_dataloaders(cfg: ConfigDict):
         collate_fn=collate_temporal_batch,
     )
 
-    return train_loader, eval_loader
+    return dataset, train_loader, eval_loader
 
 
 def build_model(cfg: ConfigDict) -> DiffusionPolicy:
@@ -211,9 +214,20 @@ def train(argv) -> None:
     set_seed(cfg.seed)
 
     logging.info("Loading dataset from %s", cfg.dataset_path)
-    train_loader, eval_loader = build_dataloaders(cfg)
+    dataset, train_loader, eval_loader = build_dataloaders(cfg)
 
-    model = build_model(cfg).to(device)
+    logging.info(
+        "Loaded %d samples from %d files", len(dataset), len(dataset.source_files)
+    )
+    if dataset.task_names:
+        logging.info("Tasks: %s", ", ".join(dataset.task_names))
+
+    run_id = wandb.util.generate_id()
+    logging.info("Run ID: %s", run_id)
+
+    model = build_model(cfg)
+    model.set_normalizer(dataset.normalizer)
+    model = model.to(device)
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -230,23 +244,35 @@ def train(argv) -> None:
     checkpoint_manager = CheckpointManager(
         directory=cfg.checkpoint.dir,
         prefix=cfg.checkpoint.prefix,
+        run_id=run_id,
+        top_k=cfg.checkpoint.top_k,
+        maximize_metric=cfg.checkpoint.maximize_metric,
     )
 
     total_params = sum(p.numel() for p in model.parameters())
     logging.info("Model parameters: %.2fM", total_params / 1e6)
     wandb_run = None
+    full_run_name = cfg.logging.run_name
+    if full_run_name:
+        full_run_name = f"{full_run_name}_{run_id}"
+    else:
+        full_run_name = run_id
     if cfg.logging.enable_wandb:
         wandb_cfg = cfg.to_dict()
+        wandb_cfg.setdefault("logging", {})
+        wandb_cfg["logging"]["run_id"] = run_id
         wandb_run = wandb.init(
             project=cfg.logging.project,
             entity=cfg.logging.entity,
-            name=cfg.logging.run_name,
+            name=full_run_name,
+            id=run_id,
             config=wandb_cfg,
             reinit=True,
         )
 
     logging.info("Starting training for %d epochs", cfg.training.num_epochs)
     global_step = 0
+    last_eval_metric: float | None = None
 
     epoch_iter = tqdm.trange(cfg.training.num_epochs, desc="Epoch", leave=True)
     for epoch in epoch_iter:
@@ -288,6 +314,16 @@ def train(argv) -> None:
                 wandb_run=wandb_run,
                 epoch=epoch,
             )
+            checkpoint_manager.save(
+                model=model,
+                optimizer=optimizer,
+                epoch=epoch,
+                global_step=global_step,
+                ema_model=ema_helper.ema_model if ema_helper is not None else None,
+                metric=eval_loss,
+                update_latest=False,
+            )
+            last_eval_metric = eval_loss
             epoch_iter.set_postfix(eval_mse=f"{eval_loss:.6f}")
             if wandb_run is not None:
                 wandb_run.log({"eval/mse": eval_loss, "train/epoch": epoch}, step=global_step)

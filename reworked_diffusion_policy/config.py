@@ -10,6 +10,7 @@ def get_config() -> ConfigDict:
 
     # Data -----------------------------------------------------------------
     cfg.dataset_path = ""  # must be provided via flag
+    cfg.tasks = ()
     cfg.batch_size = 64
     cfg.num_workers = 0
     cfg.pin_memory = True
@@ -17,7 +18,7 @@ def get_config() -> ConfigDict:
     cfg.drop_last = True
 
     # Task geometry --------------------------------------------------------
-    cfg.horizon = 4
+    cfg.horizon = 16
     cfg.n_obs_steps = 2
     cfg.action_dim = 8
     cfg.agent_dim = 8
@@ -97,6 +98,8 @@ def get_config() -> ConfigDict:
     cfg.checkpoint.dir = "./checkpoints"
     cfg.checkpoint.prefix = "diffusion_policy"
     cfg.checkpoint.save_every = 50
+    cfg.checkpoint.top_k = 3
+    cfg.checkpoint.maximize_metric = False
 
     # Runtime --------------------------------------------------------------
     cfg.device = "cuda"

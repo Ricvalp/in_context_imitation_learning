@@ -12,6 +12,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from .normalization import LinearNormalizer, SingleFieldLinearNormalizer
+
 
 def ensure_float_colors(array: np.ndarray) -> np.ndarray:
     if array.dtype == np.uint8:
@@ -29,6 +31,7 @@ class DatasetConfig:
     n_obs_steps: int
     action_horizon: int
     use_point_colors: bool = True
+    task_names: Sequence[str] | None = None
 
 
 class RLBenchTemporalH5Dataset(Dataset):
@@ -38,16 +41,25 @@ class RLBenchTemporalH5Dataset(Dataset):
         super().__init__()
         self.cfg = cfg
         self.path = Path(cfg.path).expanduser().resolve()
-        if not self.path.is_file():
-            raise FileNotFoundError(f"Dataset not found: {self.path}")
+        self._task_names = tuple(cfg.task_names or [])
 
         self._data: List[Dict[str, torch.Tensor]] = []
-        with h5py.File(self.path, "r") as handle:
-            length = int(handle.attrs["length"])
-            samples = handle["samples"]
-            for index in tqdm(range(length), desc="Loading dataset"):
-                sample_grp = samples[str(index)]
-                self._data.append(self._process_sample(sample_grp))
+        self._stats: Dict[str, Dict[str, torch.Tensor]] = {}
+        self._source_files = self._resolve_source_files()
+        for file_path in self._source_files:
+            with h5py.File(file_path, "r") as handle:
+                length = int(handle.attrs["length"])
+                samples = handle["samples"]
+                for index in tqdm(range(length), desc=f"Loading {file_path.name}"):
+                    sample_grp = samples[str(index)]
+                    sample = self._process_sample(sample_grp)
+                    self._data.append(sample)
+                    self._update_stats(sample)
+
+        if not self._data:
+            raise RuntimeError(f"No samples loaded from {self._source_files}")
+
+        self._normalizer = self._build_normalizer()
 
     def __len__(self) -> int:  # type: ignore[override]
         return len(self._data)
@@ -127,6 +139,112 @@ class RLBenchTemporalH5Dataset(Dataset):
             "agent_pos": agent_state_tensor,
             "action": action_seq,
         }
+
+    # ------------------------------------------------------------------
+    def _resolve_source_files(self) -> List[Path]:
+        if self.path.is_file():
+            return [self.path]
+        if not self.path.exists():
+            raise FileNotFoundError(f"Dataset path not found: {self.path}")
+        if not self.path.is_dir():
+            raise FileNotFoundError(f"Unsupported dataset path: {self.path}")
+        if not self._task_names:
+            raise ValueError("task_names must be provided when dataset path is a directory")
+
+        resolved: List[Path] = []
+        for task in self._task_names:
+            task_dir = self.path / task
+            if not task_dir.is_dir():
+                raise FileNotFoundError(f"Task directory not found: {task_dir}")
+            h5_files = sorted(task_dir.glob("*.h5"))
+            if not h5_files:
+                raise FileNotFoundError(f"No .h5 files found in {task_dir}")
+            resolved.extend(h5_files)
+        if not resolved:
+            raise RuntimeError(f"No dataset files found for tasks {self._task_names}")
+        return resolved
+
+    def _update_stats(self, sample: Dict[str, torch.Tensor]) -> None:
+        self._accumulate("point_clouds", sample["point_clouds"])
+        self._accumulate("agent_pos", sample["agent_pos"])
+        self._accumulate("action", sample["action"])
+
+    def _accumulate(self, key: str, tensor: torch.Tensor) -> None:
+        feature_dim = tensor.shape[-1]
+        flat = tensor.reshape(-1, feature_dim).to(torch.float64)
+        if key not in self._stats:
+            self._stats[key] = {
+                "count": torch.zeros(1, dtype=torch.float64),
+                "sum": torch.zeros(feature_dim, dtype=torch.float64),
+                "sum_sq": torch.zeros(feature_dim, dtype=torch.float64),
+                "min": torch.full((feature_dim,), float("inf"), dtype=torch.float64),
+                "max": torch.full((feature_dim,), float("-inf"), dtype=torch.float64),
+            }
+
+        stats = self._stats[key]
+        count = flat.shape[0]
+        stats["count"] += count
+        stats["sum"] += flat.sum(dim=0)
+        stats["sum_sq"] += (flat ** 2).sum(dim=0)
+        stats["min"] = torch.minimum(stats["min"], flat.min(dim=0).values)
+        stats["max"] = torch.maximum(stats["max"], flat.max(dim=0).values)
+
+    def _build_normalizer(self) -> LinearNormalizer:
+        output_min = -1.0
+        output_max = 1.0
+        range_eps = 1e-4
+
+        normalizer = LinearNormalizer()
+        for key, stats in self._stats.items():
+            total_count = int(stats["count"].item())
+            if total_count <= 0:
+                raise RuntimeError(f"No statistics accumulated for field '{key}'")
+
+            sum_vals = stats["sum"]
+            sum_sq_vals = stats["sum_sq"]
+            mean = sum_vals / total_count
+            variance = torch.clamp(sum_sq_vals / total_count - mean ** 2, min=0.0)
+            std = torch.sqrt(variance)
+
+            input_min = stats["min"].to(torch.float32)
+            input_max = stats["max"].to(torch.float32)
+            input_mean = mean.to(torch.float32)
+            input_std = std.to(torch.float32)
+
+            input_range = input_max - input_min
+            scale = torch.empty_like(input_range)
+            offset = torch.empty_like(input_range)
+
+            ignore = input_range < range_eps
+            safe_range = input_range.clone()
+            safe_range[ignore] = output_max - output_min
+            scale = (output_max - output_min) / safe_range
+            offset = output_min - scale * input_min
+            midpoint = (output_max + output_min) / 2.0
+            offset[ignore] = midpoint - input_min[ignore]
+
+            input_stats = {
+                "min": input_min,
+                "max": input_max,
+                "mean": input_mean,
+                "std": input_std,
+            }
+
+            normalizer[key] = SingleFieldLinearNormalizer.create_manual(scale, offset, input_stats)
+
+        return normalizer
+
+    @property
+    def normalizer(self) -> LinearNormalizer:
+        return self._normalizer
+
+    @property
+    def source_files(self) -> Tuple[Path, ...]:
+        return tuple(self._source_files)
+
+    @property
+    def task_names(self) -> Tuple[str, ...]:
+        return tuple(self._task_names)
 
     def _format_action(self, action_seq: torch.Tensor) -> torch.Tensor:
         horizon = self.cfg.action_horizon
