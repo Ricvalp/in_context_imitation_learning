@@ -71,6 +71,18 @@ def get_config() -> ConfigDict:
     cfg.eval.point_size = 0.002
     cfg.eval.axes_length = 0.1
     cfg.eval.axes_radius = 0.004
+    cfg.eval.mask_names_to_ignore = (
+        "Floor",
+        "Wall1",
+        "Wall2",
+        "Wall3",
+        "Wall4",
+        "Roof",
+        "workspace",
+        "diningTable_visible",
+        "ResizableFloor_5_25_visibleElement",
+    )
+    cfg.eval.mask_ids_to_ignore = ()
 
     # Logging --------------------------------------------------------------
     cfg.logging = ConfigDict()
@@ -79,6 +91,12 @@ def get_config() -> ConfigDict:
     cfg.logging.entity = "equivariance"
     cfg.logging.run_name = "debug_run"
     cfg.logging.log_pointcloud_eval = True
+
+    # Checkpointing ---------------------------------------------------------
+    cfg.checkpoint = ConfigDict()
+    cfg.checkpoint.dir = "./checkpoints"
+    cfg.checkpoint.prefix = "diffusion_policy"
+    cfg.checkpoint.save_every = 50
 
     # Runtime --------------------------------------------------------------
     cfg.device = "cuda"

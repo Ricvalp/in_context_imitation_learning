@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 from tqdm import tqdm
 
 import h5py
@@ -13,7 +13,7 @@ import torch
 from torch.utils.data import Dataset
 
 
-def _ensure_float_colors(array: np.ndarray) -> np.ndarray:
+def ensure_float_colors(array: np.ndarray) -> np.ndarray:
     if array.dtype == np.uint8:
         return array.astype(np.float32) / 255.0
     array = array.astype(np.float32)
@@ -67,19 +67,19 @@ class RLBenchTemporalH5Dataset(Dataset):
         obs_grp = sample_grp["observation"]
         pc_sequence = obs_grp["point_cloud_sequence"]
         proprio_sequence = torch.from_numpy(obs_grp["proprio_sequence"][()].astype(np.float32))
-        agent_pos = proprio_sequence[-1]
 
         point_clouds: List[torch.Tensor] = []
+        agent_states: List[torch.Tensor] = []
         obs_len = int(pc_sequence.attrs.get("length", len(pc_sequence)))
         start = max(0, obs_len - self.cfg.n_obs_steps)
-        indices = range(start, obs_len)
+        indices = list(range(start, obs_len))
 
         for obs_idx in indices:
             frame = pc_sequence[str(obs_idx)]
             points = torch.from_numpy(frame["points"][()].astype(np.float32))
             masks = torch.from_numpy(frame["masks"][()].astype(np.bool_))
             if self.cfg.use_point_colors:
-                colors = torch.from_numpy(_ensure_float_colors(frame["colors"][()]))
+                colors = torch.from_numpy(ensure_float_colors(frame["colors"][()]))
             else:
                 colors = None
 
@@ -90,7 +90,7 @@ class RLBenchTemporalH5Dataset(Dataset):
             else:
                 valid_colors = colors[masks] if colors is not None else None
 
-            sampled_points, sampled_colors = _sample_points(
+            sampled_points, sampled_colors = sample_points(
                 valid_points,
                 valid_colors,
                 self.cfg.sample_points,
@@ -104,13 +104,18 @@ class RLBenchTemporalH5Dataset(Dataset):
                 features = sampled_points
             point_clouds.append(features)
 
+            state_index = min(obs_idx, proprio_sequence.shape[0] - 1)
+            agent_states.append(proprio_sequence[state_index])
+
         if not point_clouds:
             raise RuntimeError("Sample contains no point clouds")
 
         while len(point_clouds) < self.cfg.n_obs_steps:
             point_clouds.insert(0, point_clouds[0].clone())
+            agent_states.insert(0, agent_states[0].clone())
 
         point_cloud_tensor = torch.stack(point_clouds, dim=0)
+        agent_state_tensor = torch.stack(agent_states, dim=0)
 
         action_seq = torch.from_numpy(
             sample_grp["action"]["sequence"][()].astype(np.float32)
@@ -119,7 +124,7 @@ class RLBenchTemporalH5Dataset(Dataset):
 
         return {
             "point_clouds": point_cloud_tensor,
-            "agent_pos": agent_pos,
+            "agent_pos": agent_state_tensor,
             "action": action_seq,
         }
 
@@ -137,7 +142,7 @@ class RLBenchTemporalH5Dataset(Dataset):
         return torch.cat([action_seq, pad], dim=0)
 
 
-def _sample_points(
+def sample_points(
     points: torch.Tensor,
     colors: Optional[torch.Tensor],
     target_points: int,
@@ -172,4 +177,10 @@ def collate_temporal_batch(batch: Sequence[Dict[str, torch.Tensor]]) -> Dict[str
     }
 
 
-__all__ = ["DatasetConfig", "RLBenchTemporalH5Dataset", "collate_temporal_batch"]
+__all__ = [
+    "DatasetConfig",
+    "RLBenchTemporalH5Dataset",
+    "collate_temporal_batch",
+    "ensure_float_colors",
+    "sample_points",
+]

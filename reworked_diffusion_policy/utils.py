@@ -140,7 +140,7 @@ def log_pointcloud_wandb(
     *,
     wandb_run,
     point_cloud: torch.Tensor,
-    gt_actions: torch.Tensor,
+    gt_actions: Optional[torch.Tensor],
     pred_actions: torch.Tensor,
     tag: str,
 ) -> None:
@@ -153,12 +153,14 @@ def log_pointcloud_wandb(
     coords = cloud[..., :3]
     if cloud.shape[-1] >= 6:
         colors = cloud[..., 3:6]
-        if colors.max() <= 1.0:
+        if colors.size > 0 and colors.max() <= 1.0:
             colors = colors * 255.0
     else:
         colors = np.ones_like(coords) * 127.0
 
-    base_points = np.concatenate([coords.reshape(-1, 3), colors.reshape(-1, 3)], axis=-1)
+    coords = coords.reshape(-1, 3)
+    colors = colors.reshape(-1, 3)
+    base_points = np.concatenate([coords, colors], axis=-1)
 
     def _actions_to_points(actions: torch.Tensor, color_rgb: np.ndarray) -> np.ndarray:
         arr = actions.detach().cpu().numpy()
@@ -166,20 +168,17 @@ def log_pointcloud_wandb(
         colors = np.repeat(color_rgb[None, :], coords.shape[0], axis=0)
         return np.concatenate([coords, colors], axis=-1)
 
-    gt_points = _actions_to_points(gt_actions, np.array([0.0, 255.0, 0.0], dtype=np.float32))
-    pred_points = _actions_to_points(pred_actions, np.array([255.0, 0.0, 0.0], dtype=np.float32))
+    all_chunks = [base_points]
 
-    all_points = np.concatenate([base_points, gt_points, pred_points], axis=0)
+    if gt_actions is not None:
+        gt_points = _actions_to_points(gt_actions, np.array([0.0, 255.0, 0.0], dtype=np.float32))
+        all_chunks.append(gt_points)
+
+    pred_points = _actions_to_points(pred_actions, np.array([255.0, 0.0, 0.0], dtype=np.float32))
+    all_chunks.append(pred_points)
+
+    all_points = np.concatenate(all_chunks, axis=0)
 
     wandb_run.log(
-        {
-            f"{tag}/pointcloud": wandb.Object3D(
-                {
-                    "points": {
-                        "format": "xyzrgb",
-                        "data": all_points.astype(np.float32).tolist(),
-                    }
-                }
-            )
-        }
+        {f"{tag}/pointcloud": wandb.Object3D(all_points.astype(np.float32))}
     )
