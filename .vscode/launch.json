@@ -3,19 +3,24 @@
     "configurations": [
         {
             "name": "Train 3D Diffusion Policy",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "reworked_diffusion_policy.train",
-            "justMyCode": false,
+            "justMyCode": true,
             "args": [
                 "--dataset_path",
-                "/media/davidknigge/hard-disk2/storage/robotics/rlbench_20tasks_100episodes_preprocessed/temporal/play_jenga/0c2a008a21871c72c1f26e10c3e738960d4610a8.h5",
+                 "/mnt/external_storage/robotics/rlbench/temporal/close_drawer/42ac11cdf83fe09eb455ebc06db2c6176f6e7666.h5",
+                // "/media/davidknigge/hard-disk2/storage/robotics/rlbench_20tasks_100episodes_preprocessed/temporal/play_jenga/0c2a008a21871c72c1f26e10c3e738960d4610a8.h5",
+                "--task", "close_drawer",
+                "--task", "open_drawer",
+                "--task", "close_fridge",
                 "--device",
                 "cuda",
                 "--batch_size",
                 "64",
                 "--epochs",
-                "300"
+                "300",
+                "--config.horizon=16"
             ],
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"

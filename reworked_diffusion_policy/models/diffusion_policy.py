@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, Optional
+import copy
 
 import torch
 import torch.nn as nn
@@ -12,6 +13,7 @@ from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 
 from .pointnet import ObservationEncoder, PointNetEncoder
 from .unet1d import ConditionalUNet1D
+from ..normalization import LinearNormalizer
 
 
 @dataclass
@@ -75,19 +77,35 @@ class DiffusionPolicy(nn.Module):
         self.horizon = cfg.horizon
         self.action_dim = cfg.action_dim
         self.n_obs_steps = cfg.n_obs_steps
+        self.normalizer = LinearNormalizer()
+        self._normalizer_ready = False
 
     # ------------------------------------------------------------------
     def encode_observation(self, point_clouds: torch.Tensor, agent_pos: torch.Tensor) -> torch.Tensor:
         return self.encoder(point_clouds, agent_pos)
 
+    def set_normalizer(self, normalizer: LinearNormalizer) -> None:
+        self.normalizer = copy.deepcopy(normalizer)
+        for param in self.normalizer.parameters():
+            param.requires_grad_(False)
+        self._normalizer_ready = True
+
     def compute_loss(self, batch: Dict[str, torch.Tensor]) -> tuple[torch.Tensor, Dict[str, float]]:
+        if not self._normalizer_ready:
+            raise RuntimeError("Normalizer must be set before training")
+
         point_clouds = batch["point_clouds"]
         agent_pos = batch["agent_pos"]
         actions = batch["action"]
 
-        global_cond = self.encode_observation(point_clouds, agent_pos)
+        obs_norm = self.normalizer.normalize(
+            {"point_clouds": point_clouds, "agent_pos": agent_pos}
+        )
+        actions_norm = self.normalizer["action"].normalize(actions)
 
-        noise = torch.randn_like(actions)
+        global_cond = self.encode_observation(obs_norm["point_clouds"], obs_norm["agent_pos"])
+
+        noise = torch.randn_like(actions_norm)
         batch_size = actions.shape[0]
         device = actions.device
 
@@ -99,7 +117,7 @@ class DiffusionPolicy(nn.Module):
             dtype=torch.long,
         )
 
-        noisy_actions = self.scheduler.add_noise(actions, noise, timesteps)
+        noisy_actions = self.scheduler.add_noise(actions_norm, noise, timesteps)
         pred = self.unet(noisy_actions, timesteps, global_cond)
 
         loss = F.mse_loss(pred, noise)
@@ -107,9 +125,15 @@ class DiffusionPolicy(nn.Module):
 
     @torch.no_grad()
     def sample(self, point_clouds: torch.Tensor, agent_pos: torch.Tensor) -> torch.Tensor:
+        if not self._normalizer_ready:
+            raise RuntimeError("Normalizer must be set before sampling")
+
         device = point_clouds.device
         batch_size = point_clouds.shape[0]
-        global_cond = self.encode_observation(point_clouds, agent_pos)
+        obs_norm = self.normalizer.normalize(
+            {"point_clouds": point_clouds, "agent_pos": agent_pos}
+        )
+        global_cond = self.encode_observation(obs_norm["point_clouds"], obs_norm["agent_pos"])
 
         trajectory = torch.randn(
             batch_size,
@@ -127,7 +151,13 @@ class DiffusionPolicy(nn.Module):
             step_output = self.scheduler.step(noise_pred, t, trajectory)
             trajectory = step_output.prev_sample
 
-        return trajectory
+        return self.normalizer["action"].unnormalize(trajectory)
+
+    def load_state_dict(self, state_dict, strict: bool = True):  # type: ignore[override]
+        result = super().load_state_dict(state_dict, strict=strict)
+        if any(key.startswith("normalizer.params_dict") for key in state_dict.keys()):
+            self._normalizer_ready = True
+        return result
 
 
 __all__ = ["DiffusionPolicy", "DiffusionPolicyConfig"]
