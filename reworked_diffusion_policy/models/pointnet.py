@@ -33,6 +33,7 @@ class PointNetEncoder(nn.Module):
         use_layernorm: bool = True,
     ) -> None:
         super().__init__()
+        self.out_dim = out_dim
         mlp_sizes = [in_channels, *hidden_dims, out_dim]
         layers = []
         for idx in range(len(mlp_sizes) - 1):
@@ -67,6 +68,7 @@ class ObservationEncoder(nn.Module):
         if len(state_dims) < 2:
             raise ValueError("state_dims should contain at least input and output size")
         self.state_mlp = _make_mlp(state_dims, activation=nn.ReLU, layer_norm=False)
+        self.state_out_dim = state_dims[-1]
 
     def forward(self, point_clouds: torch.Tensor, agent_pos: torch.Tensor) -> torch.Tensor:
         # point_clouds: (B, To, N, C)
@@ -74,12 +76,21 @@ class ObservationEncoder(nn.Module):
         if tobs != self.n_obs_steps:
             raise ValueError(f"Expected {self.n_obs_steps} obs steps, got {tobs}")
         clouds = point_clouds.reshape(b * tobs, npts, feat)
-        per_frame = self.pointnet(clouds)
-        per_frame = per_frame.reshape(b, tobs, -1)
-        global_cloud = per_frame.reshape(b, -1)
+        point_feats = self.pointnet(clouds)
 
-        state_feat = self.state_mlp(agent_pos)
-        return torch.cat([global_cloud, state_feat], dim=-1)
+        if agent_pos.ndim == 2:
+            agent_pos = agent_pos.unsqueeze(1).expand(-1, tobs, -1)
+        if agent_pos.shape[0] != b or agent_pos.shape[1] != tobs:
+            raise ValueError(
+                f"agent_pos should have shape (B, {tobs}, D), got {tuple(agent_pos.shape)}"
+            )
+
+        state_flat = agent_pos.reshape(b * tobs, -1)
+        state_feats = self.state_mlp(state_flat)
+
+        per_frame = torch.cat([point_feats, state_feats], dim=-1)
+        per_frame = per_frame.reshape(b, tobs, -1)
+        return per_frame.reshape(b, -1)
 
 
 __all__ = ["PointNetEncoder", "ObservationEncoder"]

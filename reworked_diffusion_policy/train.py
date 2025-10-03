@@ -14,6 +14,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from .config import get_config
+from .checkpoint import CheckpointManager
 from .dataset import DatasetConfig, RLBenchTemporalH5Dataset, collate_temporal_batch
 from .models.diffusion_policy import DiffusionPolicy, DiffusionPolicyConfig
 from .utils import (
@@ -44,6 +45,8 @@ flags.DEFINE_integer("num_workers", None, "Number of dataloader workers")
 flags.DEFINE_integer("num_inference_steps", None, "Override sampling steps")
 flags.DEFINE_bool("enable_viser", None, "Enable viser visualization during eval")
 flags.DEFINE_string("device", None, "Device to train on (cpu or cuda)" )
+flags.DEFINE_string("checkpoint_dir", None, "Override checkpoint directory")
+flags.DEFINE_integer("checkpoint_interval", None, "Override checkpoint save interval")
 
 
 def _apply_overrides(cfg: ConfigDict) -> ConfigDict:
@@ -69,6 +72,10 @@ def _apply_overrides(cfg: ConfigDict) -> ConfigDict:
         cfg.eval.enable_viser = FLAGS.enable_viser
     if FLAGS.device:
         cfg.device = FLAGS.device
+    if FLAGS.checkpoint_dir:
+        cfg.checkpoint.dir = FLAGS.checkpoint_dir
+    if FLAGS.checkpoint_interval is not None:
+        cfg.checkpoint.save_every = max(0, FLAGS.checkpoint_interval)
     return cfg
 
 
@@ -179,13 +186,12 @@ def evaluate(
                 axes_radius=cfg.eval.axes_radius,
             )
         if wandb_run is not None and cfg.logging.enable_wandb and cfg.logging.log_pointcloud_eval:
-            prefix = "eval" if epoch is None else f"eval/epoch_{epoch}"
             log_pointcloud_wandb(
                 wandb_run=wandb_run,
                 point_cloud=pc,
                 gt_actions=gt_act,
                 pred_actions=pred_act,
-                tag=prefix,
+                tag="eval/pointcloud",
             )
 
     return total_loss / max(1, total_samples)
@@ -220,6 +226,11 @@ def train(argv) -> None:
     ema_helper = None
     if cfg.ema.use_ema:
         ema_helper = ExponentialMovingAverage(model, decay=cfg.ema.decay).to(device)
+
+    checkpoint_manager = CheckpointManager(
+        directory=cfg.checkpoint.dir,
+        prefix=cfg.checkpoint.prefix,
+    )
 
     total_params = sum(p.numel() for p in model.parameters())
     logging.info("Model parameters: %.2fM", total_params / 1e6)
@@ -281,8 +292,27 @@ def train(argv) -> None:
             if wandb_run is not None:
                 wandb_run.log({"eval/mse": eval_loss, "train/epoch": epoch}, step=global_step)
 
+        if cfg.checkpoint.save_every > 0 and (epoch + 1) % cfg.checkpoint.save_every == 0:
+            ckpt_path = checkpoint_manager.save(
+                model=model,
+                optimizer=optimizer,
+                epoch=epoch,
+                global_step=global_step,
+                ema_model=ema_helper.ema_model if ema_helper is not None else None,
+            )
+            logging.info("Saved checkpoint to %s", ckpt_path)
+
     if wandb_run is not None:
         wandb_run.finish()
+
+    final_ckpt = checkpoint_manager.save(
+        model=model,
+        optimizer=optimizer,
+        epoch=cfg.training.num_epochs,
+        global_step=global_step,
+        ema_model=ema_helper.ema_model if ema_helper is not None else None,
+    )
+    logging.info("Saved final checkpoint to %s", final_ckpt)
 
 
 def main(argv) -> None:

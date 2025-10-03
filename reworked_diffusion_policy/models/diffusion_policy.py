@@ -46,6 +46,9 @@ class DiffusionPolicy(nn.Module):
             use_layernorm=cfg.pointnet_use_layernorm,
         )
 
+        if len(cfg.state_mlp_hidden) == 0:
+            raise ValueError("state_mlp_hidden must contain at least one hidden/output dim")
+
         state_dims = (cfg.agent_dim, *cfg.state_mlp_hidden)
         self.encoder = ObservationEncoder(
             pointnet=pointnet,
@@ -53,8 +56,9 @@ class DiffusionPolicy(nn.Module):
             n_obs_steps=cfg.n_obs_steps,
         )
 
-        state_out_dim = cfg.state_mlp_hidden[-1]
-        global_cond_dim = cfg.n_obs_steps * cfg.pointnet_out_dim + state_out_dim
+        state_out_dim = state_dims[-1]
+        per_frame_dim = pointnet.out_dim + state_out_dim
+        global_cond_dim = cfg.n_obs_steps * per_frame_dim
 
         self.unet = ConditionalUNet1D(
             input_dim=cfg.action_dim,
