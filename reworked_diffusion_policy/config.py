@@ -67,7 +67,7 @@ def get_config() -> ConfigDict:
     # Evaluation -----------------------------------------------------------
     cfg.eval = ConfigDict()
     cfg.eval.max_batches = 50
-    cfg.eval.enable_viser = False
+    cfg.eval.enable_viser = True
     cfg.eval.point_size = 0.002
     cfg.eval.axes_length = 0.1
     cfg.eval.axes_radius = 0.004
