@@ -9,11 +9,9 @@
             "justMyCode": true,
             "args": [
                 "--dataset_path",
-                 "/mnt/external_storage/robotics/rlbench/temporal/close_drawer/42ac11cdf83fe09eb455ebc06db2c6176f6e7666.h5",
-                // "/media/davidknigge/hard-disk2/storage/robotics/rlbench_20tasks_100episodes_preprocessed/temporal/play_jenga/0c2a008a21871c72c1f26e10c3e738960d4610a8.h5",
+                //  "/mnt/external_storage/robotics/rlbench/temporal/close_drawer/42ac11cdf83fe09eb455ebc06db2c6176f6e7666.h5",
+                "/media/davidknigge/hard-disk2/storage/robotics/rlbench_20tasks_100episodes_16_steps_preprocessed/temporal/close_drawer/8d7bf9a9c0f3ba8074dfc82b0d01c251fd566099.h5",
                 "--task", "close_drawer",
-                "--task", "open_drawer",
-                "--task", "close_fridge",
                 "--device",
                 "cuda",
                 "--batch_size",
@@ -21,6 +19,30 @@
                 "--epochs",
                 "300",
                 "--config.horizon=16"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Eval 3D Diffusion Policy (Robot)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "reworked_diffusion_policy.eval_rlbench",
+            "justMyCode": true,
+            "args": [
+                "--checkpoint",
+                "${workspaceFolder}/checkpoints/diffusion_policy_k3veppvb_latest.pt",
+                "--tasks",
+                "close_drawer",
+                "--variations",
+                "0",
+                "--episodes",
+                "10",
+                "--max-steps",
+                "100",
+                "--use-ema"
             ],
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"

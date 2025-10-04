@@ -154,10 +154,49 @@ class DiffusionPolicy(nn.Module):
         return self.normalizer["action"].unnormalize(trajectory)
 
     def load_state_dict(self, state_dict, strict: bool = True):  # type: ignore[override]
-        result = super().load_state_dict(state_dict, strict=strict)
-        if any(key.startswith("normalizer.params_dict") for key in state_dict.keys()):
+        has_normalizer = any(key.startswith("normalizer.params_dict") for key in state_dict.keys())
+
+        restored_normalizer = None
+        restored_flag = self._normalizer_ready
+        if not has_normalizer and self._normalizer_ready:
+            restored_normalizer = self.normalizer
+            self.normalizer = LinearNormalizer()
+            self._normalizer_ready = False
+
+        result = super().load_state_dict(state_dict, strict=False)
+
+        if has_normalizer:
             self._normalizer_ready = True
-        return result
+        elif restored_normalizer is not None:
+            self.normalizer = restored_normalizer
+            self._normalizer_ready = restored_flag
+
+        missing_keys = list(result.missing_keys)
+        if not has_normalizer:
+            missing_keys = [
+                key
+                for key in missing_keys
+                if not key.startswith("normalizer.params_dict")
+            ]
+
+        unexpected_keys = list(result.unexpected_keys)
+
+        if strict and (missing_keys or unexpected_keys):
+            error_lines = []
+            if missing_keys:
+                error_lines.append(
+                    "Missing key(s) in state_dict: " + ", ".join(missing_keys) + "."
+                )
+            if unexpected_keys:
+                error_lines.append(
+                    "Unexpected key(s) in state_dict: " + ", ".join(unexpected_keys) + "."
+                )
+            error_msg = "\n\t".join(error_lines)
+            raise RuntimeError(
+                f"Error(s) in loading state_dict for {self.__class__.__name__}:\n\t{error_msg}"
+            )
+
+        return type(result)(missing_keys, unexpected_keys)
 
 
 __all__ = ["DiffusionPolicy", "DiffusionPolicyConfig"]

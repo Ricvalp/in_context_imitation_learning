@@ -40,6 +40,9 @@ from reworked_diffusion_policy.rlbench_integration import (
 from reworked_diffusion_policy.utils import log_pointcloud_wandb, set_seed
 
 
+LOG_POINTCLOUD_INTERVAL = 20
+
+
 def _load_config(path: str | None) -> ConfigDict:
     base_cfg = get_config()
     if path is None:
@@ -242,11 +245,20 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--no-headless", action="store_true", help="Launch RLBench with a viewer")
     parser.add_argument("--no-wandb", action="store_true", help="Disable Weights & Biases logging")
     parser.add_argument("--wandb-run-name", type=str, default=None, help="Override wandb run name")
+    parser.add_argument(
+        "--executed-actions",
+        type=int,
+        default=16,
+        help="How many actions from each sampled plan to execute (default: 16)",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str]) -> None:
     args = parse_args(argv)
+
+    if args.executed_actions <= 0:
+        raise ValueError("--executed-actions must be a positive integer")
 
     cfg = _load_config(args.config)
     cfg = cfg.copy_and_resolve_references()
@@ -319,6 +331,7 @@ def main(argv: Sequence[str]) -> None:
             "episodes_per_variation": args.episodes,
             "max_steps": args.max_steps,
             "use_ema": args.use_ema,
+            "executed_actions": args.executed_actions,
         }
         wandb_run = wandb.init(
             project=cfg.logging.project,
@@ -365,7 +378,7 @@ def main(argv: Sequence[str]) -> None:
                     success = False
                     steps_taken = 0
 
-                    for step in range(args.max_steps):
+                    while steps_taken < args.max_steps:
                         pc_stack, agent_stack = history.stacked(device)
                         point_batch = pc_stack.unsqueeze(0)
                         agent_batch = agent_stack.unsqueeze(0)
@@ -373,7 +386,7 @@ def main(argv: Sequence[str]) -> None:
                         with torch.no_grad():
                             plan = model.sample(point_batch, agent_batch)
 
-                        if episode_tag is not None:
+                        if episode_tag is not None and steps_taken % LOG_POINTCLOUD_INTERVAL == 0:
                             log_pointcloud_wandb(
                                 wandb_run=wandb_run,
                                 point_cloud=pc_stack.cpu(),
@@ -382,25 +395,46 @@ def main(argv: Sequence[str]) -> None:
                                 tag=episode_tag,
                             )
 
-                        command = action_plan_to_command(
-                            plan[0, 0],
-                            last_agent_state=history.latest_agent_state(),
+                        actions_to_execute = min(
+                            args.executed_actions,
+                            plan.shape[1],
+                            args.max_steps - steps_taken,
                         )
-
-                        try:
-                            obs, reward, terminate = task_env.step(command)
-                        except Exception as exc:  # pragma: no cover - runtime safety
-                            print(f"Step failed on {task_name} variation {variation}: {exc}")
+                        if actions_to_execute <= 0:
                             break
 
-                        feats, agent_state = processor.extract(obs)
-                        history.append(feats, agent_state)
-                        if video_buffers is not None:
-                            _append_camera_frames(obs, video_buffers)
-                        steps_taken = step + 1
+                        episode_done = False
+                        for action_index in range(actions_to_execute):
+                            command = action_plan_to_command(
+                                plan[0, action_index],
+                                last_agent_state=history.latest_agent_state(),
+                            )
 
-                        if terminate:
-                            success = True
+                            try:
+                                obs, reward, terminate = task_env.step(command)
+                            except Exception as exc:  # pragma: no cover - runtime safety
+                                print(
+                                    f"Step failed on {task_name} variation {variation}: {exc}"
+                                )
+                                episode_done = True
+                                break
+
+                            feats, agent_state = processor.extract(obs)
+                            history.append(feats, agent_state)
+                            if video_buffers is not None:
+                                _append_camera_frames(obs, video_buffers)
+                            steps_taken += 1
+
+                            if terminate:
+                                success = True
+                                episode_done = True
+                                break
+
+                            if steps_taken >= args.max_steps:
+                                episode_done = True
+                                break
+
+                        if episode_done:
                             break
 
                     results.append(

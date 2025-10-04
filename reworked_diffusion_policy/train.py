@@ -111,7 +111,7 @@ def build_dataloaders(cfg: ConfigDict):
     eval_loader = DataLoader(
         dataset,
         batch_size=cfg.batch_size,
-        shuffle=False,
+        shuffle=True,
         num_workers=max(0, cfg.num_workers // 2),
         pin_memory=cfg.pin_memory,
         drop_last=False,
