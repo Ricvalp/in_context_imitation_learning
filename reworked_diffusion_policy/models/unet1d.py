@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Sequence
+from typing import List, Sequence, Tuple
 
 import torch
 import torch.nn as nn
@@ -93,7 +93,7 @@ class DownBlock(nn.Module):
             self.downsample_out_channels = next_channels
             self.downsample = nn.Conv1d(out_channels, next_channels, 3, stride=2, padding=1)
 
-    def forward(self, x: torch.Tensor, cond: torch.Tensor) -> (torch.Tensor, torch.Tensor):
+    def forward(self, x: torch.Tensor, cond: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         for block in self.res_blocks:
             x = block(x, cond)
         skip = x

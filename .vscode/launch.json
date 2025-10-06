@@ -10,8 +10,8 @@
             "args": [
                 "--dataset_path",
                 //  "/mnt/external_storage/robotics/rlbench/temporal/close_drawer/42ac11cdf83fe09eb455ebc06db2c6176f6e7666.h5",
-                "/media/davidknigge/hard-disk2/storage/robotics/rlbench_20tasks_100episodes_16_steps_preprocessed/temporal/close_drawer/8d7bf9a9c0f3ba8074dfc82b0d01c251fd566099.h5",
-                "--task", "close_drawer",
+                "/media/davidknigge/hard-disk2/storage/robotics/rlbench_20tasks_100episodes_16_steps_preprocessed/temporal/",
+                "--task", "close_drawer", "--task", "press_switch", "--task", "close_fridge",
                 "--device",
                 "cuda",
                 "--batch_size",
