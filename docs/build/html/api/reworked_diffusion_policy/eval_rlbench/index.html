@@ -1,0 +1,317 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>reworked_diffusion_policy.eval_rlbench &mdash; IcContextImitationLearning 0.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=eafc0fe6" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js?v=f6245a2f"></script>
+      <script src="../../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="reworked_diffusion_policy.models" href="../models/index.html" />
+    <link rel="prev" title="reworked_diffusion_policy.dataset" href="../dataset/index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            IcContextImitationLearning
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">reworked_diffusion_policy</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../checkpoint/index.html">reworked_diffusion_policy.checkpoint</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../config/index.html">reworked_diffusion_policy.config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../dataset/index.html">reworked_diffusion_policy.dataset</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">reworked_diffusion_policy.eval_rlbench</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../models/index.html">reworked_diffusion_policy.models</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../normalization/index.html">reworked_diffusion_policy.normalization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../rlbench_integration/index.html">reworked_diffusion_policy.rlbench_integration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../train/index.html">reworked_diffusion_policy.train</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../utils/index.html">reworked_diffusion_policy.utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../visualize_temporal_dataset/index.html">reworked_diffusion_policy.visualize_temporal_dataset</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">IcContextImitationLearning</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">API Reference</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">reworked_diffusion_policy</a></li>
+      <li class="breadcrumb-item active">reworked_diffusion_policy.eval_rlbench</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api/reworked_diffusion_policy/eval_rlbench/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-reworked_diffusion_policy.eval_rlbench">
+<span id="reworked-diffusion-policy-eval-rlbench"></span><h1>reworked_diffusion_policy.eval_rlbench<a class="headerlink" href="#module-reworked_diffusion_policy.eval_rlbench" title="Permalink to this heading"></a></h1>
+<p>Evaluate the diffusion policy inside an RLBench simulation.</p>
+<section id="attributes">
+<h2>Attributes<a class="headerlink" href="#attributes" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#reworked_diffusion_policy.eval_rlbench._REPO_ROOT" title="reworked_diffusion_policy.eval_rlbench._REPO_ROOT"><code class="xref py py-obj docutils literal notranslate"><span class="pre">_REPO_ROOT</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#reworked_diffusion_policy.eval_rlbench.LOG_POINTCLOUD_INTERVAL" title="reworked_diffusion_policy.eval_rlbench.LOG_POINTCLOUD_INTERVAL"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LOG_POINTCLOUD_INTERVAL</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="classes">
+<h2>Classes<a class="headerlink" href="#classes" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder" title="reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">MaskFilterBuilder</span></code></a></p></td>
+<td><p>Constructs per-variation mask filters matching the training dataset.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#reworked_diffusion_policy.eval_rlbench._load_config" title="reworked_diffusion_policy.eval_rlbench._load_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">_load_config</span></code></a>(→ ml_collections.ConfigDict)</p></td>
+<td><p>Load the training configuration, optionally from a Python module file.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#reworked_diffusion_policy.eval_rlbench._build_model" title="reworked_diffusion_policy.eval_rlbench._build_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">_build_model</span></code></a>(...)</p></td>
+<td><p>Construct a <code class="xref py py-class docutils literal notranslate"><span class="pre">DiffusionPolicy</span></code> for evaluation using <code class="docutils literal notranslate"><span class="pre">cfg</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#reworked_diffusion_policy.eval_rlbench._append_camera_frames" title="reworked_diffusion_policy.eval_rlbench._append_camera_frames"><code class="xref py py-obj docutils literal notranslate"><span class="pre">_append_camera_frames</span></code></a>(→ None)</p></td>
+<td><p>Append RGB frames for each camera into <code class="docutils literal notranslate"><span class="pre">buffers</span></code> for logging.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#reworked_diffusion_policy.eval_rlbench.parse_args" title="reworked_diffusion_policy.eval_rlbench.parse_args"><code class="xref py py-obj docutils literal notranslate"><span class="pre">parse_args</span></code></a>(→ argparse.Namespace)</p></td>
+<td><p>Parse CLI arguments for the RLBench evaluation script.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#reworked_diffusion_policy.eval_rlbench.main" title="reworked_diffusion_policy.eval_rlbench.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">main</span></code></a>(→ None)</p></td>
+<td><p>Evaluate a trained diffusion policy on RLBench tasks.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Permalink to this heading"></a></h2>
+<dl class="py data">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench._REPO_ROOT">
+<span class="sig-prename descclassname"><span class="pre">reworked_diffusion_policy.eval_rlbench.</span></span><span class="sig-name descname"><span class="pre">_REPO_ROOT</span></span><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench._REPO_ROOT" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench.LOG_POINTCLOUD_INTERVAL">
+<span class="sig-prename descclassname"><span class="pre">reworked_diffusion_policy.eval_rlbench.</span></span><span class="sig-name descname"><span class="pre">LOG_POINTCLOUD_INTERVAL</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">20</span></em><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench.LOG_POINTCLOUD_INTERVAL" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench._load_config">
+<span class="sig-prename descclassname"><span class="pre">reworked_diffusion_policy.eval_rlbench.</span></span><span class="sig-name descname"><span class="pre">_load_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ml_collections.ConfigDict</span></span></span><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench._load_config" title="Permalink to this definition"></a></dt>
+<dd><p>Load the training configuration, optionally from a Python module file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>path</strong> – Optional path to a Python module defining <code class="docutils literal notranslate"><span class="pre">get_config</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Configuration dictionary merged with any overrides from <code class="docutils literal notranslate"><span class="pre">path</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench._build_model">
+<span class="sig-prename descclassname"><span class="pre">reworked_diffusion_policy.eval_rlbench.</span></span><span class="sig-name descname"><span class="pre">_build_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ml_collections.ConfigDict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../models/diffusion_policy/index.html#reworked_diffusion_policy.models.diffusion_policy.DiffusionPolicy" title="reworked_diffusion_policy.models.diffusion_policy.DiffusionPolicy"><span class="pre">reworked_diffusion_policy.models.diffusion_policy.DiffusionPolicy</span></a></span></span><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench._build_model" title="Permalink to this definition"></a></dt>
+<dd><p>Construct a <code class="xref py py-class docutils literal notranslate"><span class="pre">DiffusionPolicy</span></code> for evaluation using <code class="docutils literal notranslate"><span class="pre">cfg</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>cfg</strong> – Configuration dictionary describing the policy architecture.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Initialised <code class="xref py py-class docutils literal notranslate"><span class="pre">DiffusionPolicy</span></code> instance.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench._append_camera_frames">
+<span class="sig-prename descclassname"><span class="pre">reworked_diffusion_policy.eval_rlbench.</span></span><span class="sig-name descname"><span class="pre">_append_camera_frames</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench._append_camera_frames" title="Permalink to this definition"></a></dt>
+<dd><p>Append RGB frames for each camera into <code class="docutils literal notranslate"><span class="pre">buffers</span></code> for logging.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>obs</strong> – RLBench observation providing RGB frames.</p></li>
+<li><p><strong>buffers</strong> – Mapping from camera name to list of frames.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">reworked_diffusion_policy.eval_rlbench.</span></span><span class="sig-name descname"><span class="pre">MaskFilterBuilder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fallback_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder" title="Permalink to this definition"></a></dt>
+<dd><p>Constructs per-variation mask filters matching the training dataset.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder._fallback_ids">
+<span class="sig-name descname"><span class="pre">_fallback_ids</span></span><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder._fallback_ids" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder._ignore_names">
+<span class="sig-name descname"><span class="pre">_ignore_names</span></span><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder._ignore_names" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder._variation_mapping">
+<span class="sig-name descname"><span class="pre">_variation_mapping</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder._variation_mapping" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder._name_to_handles">
+<span class="sig-name descname"><span class="pre">_name_to_handles</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">set</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder._name_to_handles" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder.make_filter">
+<span class="sig-name descname"><span class="pre">make_filter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">variation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">task_env</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">obs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder.make_filter" title="Permalink to this definition"></a></dt>
+<dd><p>Create a boolean mask filter for a given variation, if possible.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>variation</strong> – RLBench variation identifier.</p></li>
+<li><p><strong>task_env</strong> – RLBench task environment instance.</p></li>
+<li><p><strong>obs</strong> – Latest observation for deriving fallback metadata.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Callable converting a mask array into a boolean keep mask, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder._mapping_from_scene">
+<span class="sig-name descname"><span class="pre">_mapping_from_scene</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">task_env</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">obs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder._mapping_from_scene" title="Permalink to this definition"></a></dt>
+<dd><p>Derive a handle→name mapping directly from the RLBench scene.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>task_env</strong> – RLBench task environment.</p></li>
+<li><p><strong>obs</strong> – Observation containing segmentation masks.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Mapping from object handles to resolved names.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench.parse_args">
+<span class="sig-prename descclassname"><span class="pre">reworked_diffusion_policy.eval_rlbench.</span></span><span class="sig-name descname"><span class="pre">parse_args</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">argv</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">argparse.Namespace</span></span></span><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench.parse_args" title="Permalink to this definition"></a></dt>
+<dd><p>Parse CLI arguments for the RLBench evaluation script.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>argv</strong> – Sequence of command-line arguments (excluding script name).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Parsed <code class="xref py py-class docutils literal notranslate"><span class="pre">argparse.Namespace</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="reworked_diffusion_policy.eval_rlbench.main">
+<span class="sig-prename descclassname"><span class="pre">reworked_diffusion_policy.eval_rlbench.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">argv</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#reworked_diffusion_policy.eval_rlbench.main" title="Permalink to this definition"></a></dt>
+<dd><p>Evaluate a trained diffusion policy on RLBench tasks.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>argv</strong> – Command-line arguments provided by <code class="xref py py-mod docutils literal notranslate"><span class="pre">argparse</span></code> or <code class="docutils literal notranslate"><span class="pre">sys.argv</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../dataset/index.html" class="btn btn-neutral float-left" title="reworked_diffusion_policy.dataset" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../models/index.html" class="btn btn-neutral float-right" title="reworked_diffusion_policy.models" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

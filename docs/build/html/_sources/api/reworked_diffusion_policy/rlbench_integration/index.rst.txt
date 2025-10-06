@@ -1,0 +1,219 @@
+reworked_diffusion_policy.rlbench_integration
+=============================================
+
+.. py:module:: reworked_diffusion_policy.rlbench_integration
+
+.. autoapi-nested-parse::
+
+   Helpers for deploying the diffusion policy inside RLBench.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.rlbench_integration.CAMERA_NAMES
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.rlbench_integration.SimulationInputConfig
+   reworked_diffusion_policy.rlbench_integration.ObservationProcessor
+   reworked_diffusion_policy.rlbench_integration.ObservationHistory
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.rlbench_integration.create_action_mode
+   reworked_diffusion_policy.rlbench_integration.create_observation_config
+   reworked_diffusion_policy.rlbench_integration.resolve_task_class
+   reworked_diffusion_policy.rlbench_integration.action_plan_to_command
+   reworked_diffusion_policy.rlbench_integration.instantiate_environment
+
+
+Module Contents
+---------------
+
+.. py:data:: CAMERA_NAMES
+   :type:  Tuple[str, Ellipsis]
+   :value: ('left_shoulder', 'right_shoulder', 'overhead', 'wrist', 'front')
+
+
+.. py:class:: SimulationInputConfig
+
+   Configuration describing how to prepare simulation inputs.
+
+
+   .. py:attribute:: sample_points
+      :type:  int
+
+
+   .. py:attribute:: n_obs_steps
+      :type:  int
+
+
+   .. py:attribute:: use_point_colors
+      :type:  bool
+
+
+   .. py:attribute:: device
+      :type:  torch.device
+
+
+.. py:function:: create_action_mode() -> rlbench.action_modes.action_mode.MoveArmThenGripper
+
+   Build the default RLBench action mode (pose + discrete gripper).
+
+   :returns: Configured :class:`rlbench.action_modes.action_mode.MoveArmThenGripper`.
+
+
+.. py:function:: create_observation_config(*, image_size: Sequence[int] = (128, 128), renderer: str = 'opengl3') -> rlbench.ObservationConfig
+
+   Produce an :class:`rlbench.ObservationConfig` matching the training data.
+
+   :param image_size: ``(width, height)`` per camera.
+   :param renderer: Either ``"opengl"`` or ``"opengl3"``.
+
+   :returns: Observation configuration enabling RGB, masks and point clouds.
+
+
+.. py:class:: ObservationProcessor(cfg: SimulationInputConfig)
+
+   Converts RLBench observations into model-ready tensors.
+
+
+   .. py:attribute:: cfg
+
+
+   .. py:attribute:: _mask_filter
+      :type:  Optional[Callable[[numpy.ndarray], numpy.ndarray]]
+      :value: None
+
+
+
+   .. py:method:: set_mask_filter(mask_filter: Optional[Callable[[numpy.ndarray], numpy.ndarray]]) -> None
+
+      Set an optional binary mask filter applied to each camera image.
+
+      :param mask_filter: Callable receiving a flattened segmentation mask and
+                          returning a boolean mask where ``True`` keeps a point.
+
+
+
+   .. py:method:: extract(obs) -> Tuple[torch.Tensor, torch.Tensor]
+
+      Convert an RLBench observation into model-ready tensors.
+
+      :param obs: RLBench observation object.
+
+      :returns: Tuple ``(point_features, agent_state)`` ready for inference.
+
+
+
+   .. py:method:: _merge_point_clouds(obs) -> Tuple[numpy.ndarray, Optional[numpy.ndarray]]
+
+      Merge per-camera point clouds and apply optional mask filtering.
+
+      :param obs: RLBench observation instance.
+
+      :returns: Tuple of ``(points, colours)`` as numpy arrays.
+
+
+
+   .. py:method:: _extract_agent_state(obs) -> torch.Tensor
+
+      Assemble the low-dimensional agent state from the observation.
+
+      :param obs: RLBench observation instance.
+
+      :returns: Tensor containing the agent state vector.
+
+
+
+.. py:class:: ObservationHistory(capacity: int)
+
+   Maintains the sliding window of observations for conditioning.
+
+
+   .. py:attribute:: capacity
+
+
+   .. py:attribute:: _points
+      :type:  Deque[torch.Tensor]
+
+
+   .. py:attribute:: _agents
+      :type:  Deque[torch.Tensor]
+
+
+   .. py:method:: reset() -> None
+
+      Clear the stored observation window.
+
+
+
+   .. py:method:: append(features: torch.Tensor, agent_state: torch.Tensor) -> None
+
+      Push a new observation into the sliding window.
+
+      :param features: Point-cloud features for one observation frame.
+      :param agent_state: Low-dimensional agent state for the same frame.
+
+
+
+   .. py:method:: stacked(device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]
+
+      Return ``capacity`` frames stacked along the time dimension.
+
+      :param device: Target device for the stacked tensors.
+
+      :returns: Tuple ``(point_clouds, agent_states)`` matching the configured window.
+
+
+
+   .. py:method:: latest_agent_state() -> torch.Tensor
+
+      Return the most recently observed agent state.
+
+      :returns: Tensor containing the latest agent state.
+
+
+
+.. py:function:: resolve_task_class(name: str)
+
+   Return the RLBench task class corresponding to ``name``.
+
+   :param name: Task filename or class name.
+
+   :returns: RLBench task class object.
+
+
+.. py:function:: action_plan_to_command(action_plan: torch.Tensor, *, last_agent_state: torch.Tensor) -> numpy.ndarray
+
+   Convert predicted action vectors into RLBench-compatible commands.
+
+   :param action_plan: Predicted action vector for a single timestep.
+   :param last_agent_state: Latest agent state used when renormalising quaternions.
+
+   :returns: Command array combining pose (xyz + quaternion) and gripper state.
+
+
+.. py:function:: instantiate_environment(*, action_mode: Optional[rlbench.action_modes.action_mode.MoveArmThenGripper] = None, obs_config: Optional[rlbench.ObservationConfig] = None, headless: bool = True) -> rlbench.environment.Environment
+
+   Launch an RLBench environment with sensible defaults.
+
+   :param action_mode: Optional pre-built action mode to reuse.
+   :param obs_config: Optional observation configuration to reuse.
+   :param headless: Disable rendering windows when ``True``.
+
+   :returns: RLBench :class:`Environment` instance ready for rollouts.
+
+

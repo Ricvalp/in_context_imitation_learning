@@ -1,0 +1,29 @@
+reworked_diffusion_policy.config
+================================
+
+.. py:module:: reworked_diffusion_policy.config
+
+.. autoapi-nested-parse::
+
+   Default configuration for the lightweight 3D diffusion policy trainer.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.config.get_config
+
+
+Module Contents
+---------------
+
+.. py:function:: get_config() -> ml_collections.ConfigDict
+
+   Return the default training configuration tree.
+
+   :returns: Fresh :class:`ml_collections.ConfigDict` describing training defaults.
+
+

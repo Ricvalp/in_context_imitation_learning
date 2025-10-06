@@ -1,0 +1,112 @@
+reworked_diffusion_policy.utils
+===============================
+
+.. py:module:: reworked_diffusion_policy.utils
+
+.. autoapi-nested-parse::
+
+   Utility helpers for training and evaluation.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.utils.ExponentialMovingAverage
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.utils.set_seed
+   reworked_diffusion_policy.utils.mse
+   reworked_diffusion_policy.utils.visualize_trajectories
+   reworked_diffusion_policy.utils.log_pointcloud_wandb
+
+
+Module Contents
+---------------
+
+.. py:function:: set_seed(seed: int) -> None
+
+   Seed Python, NumPy and PyTorch RNGs for reproducibility.
+
+   :param seed: Seed value forwarded to all RNGs.
+
+
+.. py:class:: ExponentialMovingAverage(model: torch.nn.Module, decay: float)
+
+   Maintains an exponential moving average copy of a model.
+
+
+   .. py:attribute:: decay
+
+
+   .. py:attribute:: ema_model
+
+
+   .. py:method:: update(model: torch.nn.Module) -> None
+
+      Blend ``model`` parameters into the EMA copy in-place.
+
+      :param model: Source model whose parameters should be tracked.
+
+
+
+   .. py:method:: state_dict()
+
+      Expose the EMA model state for checkpointing compatibility.
+
+      :returns: State dictionary mirroring :meth:`torch.nn.Module.state_dict`.
+
+
+
+   .. py:method:: to(device: torch.device | str) -> ExponentialMovingAverage
+
+      Move the internal EMA copy to ``device`` and return ``self``.
+
+      :param device: Target device.
+
+      :returns: ``self`` for fluent chaining.
+
+
+
+.. py:function:: mse(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor
+
+   Return the standard mean squared error between ``pred`` and ``target``.
+
+   :param pred: Predicted tensor.
+   :param target: Ground-truth tensor of matching shape.
+
+   :returns: Scalar tensor containing the MSE value.
+
+
+.. py:function:: visualize_trajectories(point_cloud: torch.Tensor, gt_actions: torch.Tensor, pred_actions: torch.Tensor, *, point_size: float, axes_length: float, axes_radius: float, visualize_indefinitely: bool = False) -> None
+
+   Launch a viser viewer comparing ground-truth and predicted trajectories.
+
+   :param point_cloud: Observation tensor with shape ``(T, N, C)`` including points
+                       (and optionally colours).
+   :param gt_actions: Ground-truth action trajectory.
+   :param pred_actions: Predicted action trajectory.
+   :param point_size: Rendering size for individual points.
+   :param axes_length: Length of pose axes in the viewer.
+   :param axes_radius: Radius of pose axes cylinders.
+   :param visualize_indefinitely: Keep the viewer open until interrupted when ``True``.
+
+
+.. py:function:: log_pointcloud_wandb(*, wandb_run, point_cloud: torch.Tensor, gt_actions: Optional[torch.Tensor], pred_actions: torch.Tensor, tag: str) -> None
+
+   Log a combined point-cloud plus action targets to wandb.
+
+   :param wandb_run: Active Weights & Biases run or ``None`` to skip logging.
+   :param point_cloud: Observed point cloud tensor of shape ``(T, N, C)``.
+   :param gt_actions: Optional ground-truth actions.
+   :param pred_actions: Predicted actions to visualise.
+   :param tag: Prefix used when naming the logged artifact.
+
+

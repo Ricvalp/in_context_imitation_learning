@@ -1,0 +1,69 @@
+reworked_diffusion_policy.models.unet1d
+=======================================
+
+.. py:module:: reworked_diffusion_policy.models.unet1d
+
+.. autoapi-nested-parse::
+
+   Conditional 1D U-Net used for diffusion denoising.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.models.unet1d.ConditionalUNet1D
+
+
+Module Contents
+---------------
+
+.. py:class:: ConditionalUNet1D(input_dim: int, global_cond_dim: int, *, hidden_dims: Sequence[int], kernel_size: int, num_groups: int)
+
+   Bases: :py:obj:`torch.nn.Module`
+
+
+   UNet architecture that conditions on timestep and a global vector.
+
+
+   .. py:attribute:: input_proj
+
+
+   .. py:attribute:: time_embedding
+
+
+   .. py:attribute:: global_embedding
+
+
+   .. py:attribute:: down_blocks
+
+
+   .. py:attribute:: mid_block1
+
+
+   .. py:attribute:: mid_block2
+
+
+   .. py:attribute:: up_blocks
+
+
+   .. py:attribute:: output_norm
+
+
+   .. py:attribute:: output_proj
+
+
+   .. py:method:: forward(sample: torch.Tensor, timesteps: torch.Tensor, global_cond: torch.Tensor) -> torch.Tensor
+
+      Predict the denoising velocity for ``sample`` given the conditions.
+
+      :param sample: Noisy action trajectory ``(B, T, C)``.
+      :param timesteps: Diffusion timestep indices ``(B,)``.
+      :param global_cond: Conditioning tensor ``(B, cond_dim)`` from the encoder.
+
+      :returns: Predicted noise tensor matching the shape of ``sample``.
+
+
+

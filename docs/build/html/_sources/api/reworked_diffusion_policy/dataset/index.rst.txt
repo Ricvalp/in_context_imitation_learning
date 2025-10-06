@@ -1,0 +1,226 @@
+reworked_diffusion_policy.dataset
+=================================
+
+.. py:module:: reworked_diffusion_policy.dataset
+
+.. autoapi-nested-parse::
+
+   Dataset utilities for RLBench temporal demonstration caches.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.dataset.DatasetConfig
+   reworked_diffusion_policy.dataset.RLBenchTemporalH5Dataset
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.dataset.ensure_float_colors
+   reworked_diffusion_policy.dataset.sample_points
+   reworked_diffusion_policy.dataset.collate_temporal_batch
+
+
+Module Contents
+---------------
+
+.. py:function:: ensure_float_colors(array: numpy.ndarray) -> numpy.ndarray
+
+   Convert an RGB array to ``float32`` in ``[0, 1]`` range.
+
+   :param array: RGB values as ``uint8`` or floating-point tensor.
+
+   :returns: Normalised ``float32`` array with values in ``[0, 1]``.
+
+
+.. py:class:: DatasetConfig
+
+   Settings for loading RLBench temporal datasets.
+
+
+   .. py:attribute:: path
+      :type:  str
+
+
+   .. py:attribute:: sample_points
+      :type:  int
+
+
+   .. py:attribute:: n_obs_steps
+      :type:  int
+
+
+   .. py:attribute:: action_horizon
+      :type:  int
+
+
+   .. py:attribute:: use_point_colors
+      :type:  bool
+      :value: True
+
+
+
+   .. py:attribute:: task_names
+      :type:  Sequence[str] | None
+      :value: None
+
+
+
+.. py:class:: RLBenchTemporalH5Dataset(cfg: DatasetConfig)
+
+   Bases: :py:obj:`torch.utils.data.Dataset`
+
+
+   Dataset that eagerly loads the entire cache into memory.
+
+
+   .. py:attribute:: cfg
+
+
+   .. py:attribute:: path
+
+
+   .. py:attribute:: _task_names
+
+
+   .. py:attribute:: _data
+      :type:  List[Dict[str, torch.Tensor]]
+      :value: []
+
+
+
+   .. py:attribute:: _stats
+      :type:  Dict[str, Dict[str, torch.Tensor]]
+
+
+   .. py:attribute:: _source_files
+
+
+   .. py:attribute:: _normalizer
+
+
+   .. py:method:: __len__() -> int
+
+      Return the number of cached samples.
+
+      :returns: Number of samples loaded into memory.
+
+
+
+   .. py:method:: __getitem__(index: int) -> Dict[str, torch.Tensor]
+
+      Return a deep copy of the sample at ``index`` for safe mutation.
+
+      :param index: Dataset index in ``[0, len(self))``.
+
+      :returns: Mapping containing ``point_clouds``, ``agent_pos`` and ``action``.
+
+
+
+   .. py:method:: _process_sample(sample_grp: h5py.Group) -> Dict[str, torch.Tensor]
+
+      Convert a single HDF5 sample group into tensors.
+
+      :param sample_grp: HDF5 group representing a single dataset sample.
+
+      :returns: Dictionary containing processed tensors for the sample.
+
+
+
+   .. py:method:: _resolve_source_files() -> List[pathlib.Path]
+
+      Materialise the list of HDF5 files that should be loaded.
+
+      :returns: List of absolute :class:`Path` instances pointing to cache files.
+
+
+
+   .. py:method:: _update_stats(sample: Dict[str, torch.Tensor]) -> None
+
+      Accumulate per-feature statistics used for normalisation.
+
+      :param sample: Sample dictionary produced by :meth:`_process_sample`.
+
+
+
+   .. py:method:: _accumulate(key: str, tensor: torch.Tensor) -> None
+
+      Update running min/mean/max statistics for ``tensor``.
+
+      :param key: Field name whose statistics are being tracked.
+      :param tensor: Tensor containing the values to accumulate.
+
+
+
+   .. py:method:: _build_normalizer() -> reworked_diffusion_policy.normalization.LinearNormalizer
+
+      Create a normalizer that maps features to approximately ``[-1, 1]``.
+
+      :returns: :class:`LinearNormalizer` built from accumulated statistics.
+
+
+
+   .. py:property:: normalizer
+      :type: reworked_diffusion_policy.normalization.LinearNormalizer
+
+
+      Return the per-field linear normaliser built from the dataset.
+
+      :returns: Linear normaliser covering ``point_clouds``, ``agent_pos`` and ``action``.
+
+
+   .. py:property:: source_files
+      :type: Tuple[pathlib.Path, Ellipsis]
+
+
+      Return the fully-resolved sequence of source cache files.
+
+      :returns: Tuple of absolute :class:`Path` objects.
+
+
+   .. py:property:: task_names
+      :type: Tuple[str, Ellipsis]
+
+
+      Return the task names requested for this dataset.
+
+      :returns: Tuple of task name strings.
+
+
+   .. py:method:: _format_action(action_seq: torch.Tensor) -> torch.Tensor
+
+      Clamp or pad an action sequence to the configured horizon.
+
+      :param action_seq: Raw action sequence tensor ``(T, D)`` from the dataset.
+
+      :returns: Tensor containing exactly ``action_horizon`` steps.
+
+
+
+.. py:function:: sample_points(points: torch.Tensor, colors: Optional[torch.Tensor], target_points: int) -> Tuple[torch.Tensor, Optional[torch.Tensor]]
+
+   Sample or repeat points (and colours) to reach ``target_points`` size.
+
+   :param points: Point coordinates with shape ``(N, D)``.
+   :param colors: Optional colour values aligned with ``points``.
+   :param target_points: Number of rows desired in the output tensors.
+
+   :returns: Tuple of ``(points, colors)`` truncated or resampled to ``target_points``.
+
+
+.. py:function:: collate_temporal_batch(batch: Sequence[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]
+
+   Stack a sequence of samples into a single mini-batch.
+
+   :param batch: Iterable of dataset samples.
+
+   :returns: Dictionary with stacked ``point_clouds``, ``agent_pos`` and ``action`` tensors.
+
+

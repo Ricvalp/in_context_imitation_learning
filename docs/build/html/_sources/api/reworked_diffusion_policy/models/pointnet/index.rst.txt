@@ -1,0 +1,78 @@
+reworked_diffusion_policy.models.pointnet
+=========================================
+
+.. py:module:: reworked_diffusion_policy.models.pointnet
+
+.. autoapi-nested-parse::
+
+   Simple PointNet-style encoder for point-cloud observations.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.models.pointnet.PointNetEncoder
+   reworked_diffusion_policy.models.pointnet.ObservationEncoder
+
+
+Module Contents
+---------------
+
+.. py:class:: PointNetEncoder(in_channels: int, hidden_dims: Sequence[int], out_dim: int, *, use_layernorm: bool = True)
+
+   Bases: :py:obj:`torch.nn.Module`
+
+
+   Applies a shared MLP and max-pooling over point sets.
+
+
+   .. py:attribute:: out_dim
+
+
+   .. py:attribute:: mlp
+
+
+   .. py:method:: forward(x: torch.Tensor) -> torch.Tensor
+
+      Encode point-wise features followed by a max pooling operation.
+
+      :param x: Input tensor with shape ``(B, N, C)``.
+
+      :returns: Encoded tensor with shape ``(B, out_dim)``.
+
+
+
+.. py:class:: ObservationEncoder(*, pointnet: PointNetEncoder, state_dims: Sequence[int], n_obs_steps: int)
+
+   Bases: :py:obj:`torch.nn.Module`
+
+
+   Encodes multi-frame point clouds plus low-dimensional agent state.
+
+
+   .. py:attribute:: pointnet
+
+
+   .. py:attribute:: n_obs_steps
+
+
+   .. py:attribute:: state_mlp
+
+
+   .. py:attribute:: state_out_dim
+
+
+   .. py:method:: forward(point_clouds: torch.Tensor, agent_pos: torch.Tensor) -> torch.Tensor
+
+      Encode stacked observations of point clouds and agent state.
+
+      :param point_clouds: Tensor ``(B, To, N, C)`` with stacked point clouds.
+      :param agent_pos: Tensor ``(B, To, D)`` with low-dimensional states.
+
+      :returns: Flattened conditioning vector with shape ``(B, To * F)``.
+
+
+

@@ -1,0 +1,87 @@
+reworked_diffusion_policy.visualize_temporal_dataset
+====================================================
+
+.. py:module:: reworked_diffusion_policy.visualize_temporal_dataset
+
+.. autoapi-nested-parse::
+
+   Interactive viser viewer for batches from :class:`RLBenchTemporalH5Dataset`.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.visualize_temporal_dataset._prepare_imports
+   reworked_diffusion_policy.visualize_temporal_dataset._split_point_cloud
+   reworked_diffusion_policy.visualize_temporal_dataset._pose_from_tensor
+   reworked_diffusion_policy.visualize_temporal_dataset._update_action_frames
+   reworked_diffusion_policy.visualize_temporal_dataset._format_grippers
+   reworked_diffusion_policy.visualize_temporal_dataset.parse_args
+   reworked_diffusion_policy.visualize_temporal_dataset.main
+
+
+Module Contents
+---------------
+
+.. py:function:: _prepare_imports() -> None
+
+   Ensure package imports work when the script is launched as a file.
+
+
+.. py:function:: _split_point_cloud(tensor: torch.Tensor) -> Tuple[numpy.ndarray, numpy.ndarray]
+
+   Return ``(points, colors)`` with colours encoded as ``uint8``.
+
+   :param tensor: Point cloud tensor ``(N, C)`` where ``C`` ≥ 3 and optionally ≥ 6.
+
+   :returns: Tuple consisting of XYZ coordinates and colour array.
+
+
+.. py:function:: _pose_from_tensor(tensor: torch.Tensor) -> Optional[Tuple[numpy.ndarray, numpy.ndarray, Optional[float]]]
+
+   Extract ``(position, quaternion wxyz, gripper)`` from a tensor.
+
+   :param tensor: Action tensor for a single timestep.
+
+   :returns: Tuple containing position, quaternion and optional gripper value or ``None`` when unavailable.
+
+
+.. py:function:: _update_action_frames(frames: Sequence[viser.FrameHandle], actions: torch.Tensor) -> List[Optional[float]]
+
+   Update viser frames with future gripper poses and return gripper values.
+
+   :param frames: Sequence of viser frames to update in-place.
+   :param actions: Action tensor ``(H, D)``.
+
+   :returns: List of gripper openness values per frame (or ``None`` when missing).
+
+
+.. py:function:: _format_grippers(tag: str, values: Iterable[Optional[float]]) -> str
+
+   Format gripper signals for display.
+
+   :param tag: Label used in the formatted string.
+   :param values: Iterable of optional gripper readings.
+
+   :returns: Human-readable summary string.
+
+
+.. py:function:: parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace
+
+   Parse CLI arguments for the interactive dataset visualiser.
+
+   :param argv: Optional override for ``sys.argv[1:]``.
+
+   :returns: Parsed :class:`argparse.Namespace` with configuration values.
+
+
+.. py:function:: main(argv: Optional[Sequence[str]] = None) -> None
+
+   Launch the viser-based dataset explorer.
+
+   :param argv: Optional override for ``sys.argv[1:]``.
+
+

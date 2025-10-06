@@ -1,0 +1,121 @@
+reworked_diffusion_policy.checkpoint
+====================================
+
+.. py:module:: reworked_diffusion_policy.checkpoint
+
+.. autoapi-nested-parse::
+
+   Simple checkpoint management utilities for training and evaluation.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.checkpoint.CheckpointManager
+
+
+Module Contents
+---------------
+
+.. py:class:: CheckpointManager(directory: str | pathlib.Path, prefix: str = 'diffusion_policy', *, run_id: Optional[str] = None, top_k: int = 0, maximize_metric: bool = False)
+
+   Handles persistence of training checkpoints with optional Top-K tracking.
+
+
+   .. py:attribute:: directory
+
+
+   .. py:attribute:: prefix
+      :value: 'diffusion_policy'
+
+
+
+   .. py:attribute:: run_id
+      :value: None
+
+
+
+   .. py:attribute:: top_k
+
+
+   .. py:attribute:: maximize_metric
+      :value: False
+
+
+
+   .. py:attribute:: _topk_entries
+      :type:  List[Dict[str, object]]
+      :value: []
+
+
+
+   .. py:method:: latest_path() -> pathlib.Path
+
+      Return the path used for the most recent checkpoint.
+
+      :returns: Absolute path to the ``latest`` checkpoint file.
+
+
+
+   .. py:property:: _base_prefix
+      :type: str
+
+
+      Base filename prefix that optionally includes the run id.
+
+
+   .. py:method:: set_run_id(run_id: str) -> None
+
+      Update the run identifier used in filenames.
+
+      :param run_id: Unique identifier appended to checkpoint filenames.
+
+
+
+   .. py:method:: save(*, model: torch.nn.Module, optimizer: torch.optim.Optimizer, epoch: int, global_step: int, ema_model: Optional[torch.nn.Module] = None, metric: Optional[float] = None, update_latest: bool = True) -> pathlib.Path
+
+      Persist the latest checkpoint to disk.
+
+      :param model: Model whose parameters should be saved.
+      :param optimizer: Optimiser state to persist alongside the model.
+      :param epoch: Current epoch index.
+      :param global_step: Global optimisation step.
+      :param ema_model: Optional EMA copy to include.
+      :param metric: Validation metric used for Top-K tracking.
+      :param update_latest: Skip the ``latest`` symlink/file update when ``False``.
+
+      :returns: Path to the checkpoint file written (``<prefix>_latest.pt``).
+
+
+
+   .. py:method:: load(path: str | pathlib.Path, map_location: Optional[str | torch.device] = None) -> dict
+
+      Load a checkpoint payload from disk.
+
+      :param path: Checkpoint file to read.
+      :param map_location: Optional device remapping for tensors.
+
+      :returns: Deserialized checkpoint payload.
+
+
+
+   .. py:method:: _update_topk(*, metric: float, payload: Dict[str, object], epoch: int, global_step: int) -> None
+
+      Persist checkpoints for the best ``top_k`` metrics seen so far.
+
+      :param metric: Metric value produced by the latest evaluation.
+      :param payload: Checkpoint payload dictionary.
+      :param epoch: Epoch index associated with the payload.
+      :param global_step: Global optimisation step for filename generation.
+
+
+
+   .. py:method:: clear() -> None
+
+      Remove cached Top-K entries from disk.
+
+
+

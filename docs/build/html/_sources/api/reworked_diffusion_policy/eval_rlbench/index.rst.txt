@@ -1,0 +1,133 @@
+reworked_diffusion_policy.eval_rlbench
+======================================
+
+.. py:module:: reworked_diffusion_policy.eval_rlbench
+
+.. autoapi-nested-parse::
+
+   Evaluate the diffusion policy inside an RLBench simulation.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.eval_rlbench._REPO_ROOT
+   reworked_diffusion_policy.eval_rlbench.LOG_POINTCLOUD_INTERVAL
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.eval_rlbench.MaskFilterBuilder
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.eval_rlbench._load_config
+   reworked_diffusion_policy.eval_rlbench._build_model
+   reworked_diffusion_policy.eval_rlbench._append_camera_frames
+   reworked_diffusion_policy.eval_rlbench.parse_args
+   reworked_diffusion_policy.eval_rlbench.main
+
+
+Module Contents
+---------------
+
+.. py:data:: _REPO_ROOT
+
+.. py:data:: LOG_POINTCLOUD_INTERVAL
+   :value: 20
+
+
+.. py:function:: _load_config(path: str | None) -> ml_collections.ConfigDict
+
+   Load the training configuration, optionally from a Python module file.
+
+   :param path: Optional path to a Python module defining ``get_config``.
+
+   :returns: Configuration dictionary merged with any overrides from ``path``.
+
+
+.. py:function:: _build_model(cfg: ml_collections.ConfigDict) -> reworked_diffusion_policy.models.diffusion_policy.DiffusionPolicy
+
+   Construct a :class:`DiffusionPolicy` for evaluation using ``cfg``.
+
+   :param cfg: Configuration dictionary describing the policy architecture.
+
+   :returns: Initialised :class:`DiffusionPolicy` instance.
+
+
+.. py:function:: _append_camera_frames(obs, buffers: dict) -> None
+
+   Append RGB frames for each camera into ``buffers`` for logging.
+
+   :param obs: RLBench observation providing RGB frames.
+   :param buffers: Mapping from camera name to list of frames.
+
+
+.. py:class:: MaskFilterBuilder(dataset_path: Optional[pathlib.Path], *, ignore_names: Sequence[str], fallback_ids: Sequence[int])
+
+   Constructs per-variation mask filters matching the training dataset.
+
+
+   .. py:attribute:: _fallback_ids
+
+
+   .. py:attribute:: _ignore_names
+
+
+   .. py:attribute:: _variation_mapping
+      :type:  Dict[int, Dict[int, str]]
+
+
+   .. py:attribute:: _name_to_handles
+      :type:  Dict[str, set[int]]
+
+
+   .. py:method:: make_filter(variation: int, task_env, obs) -> Optional[Callable[[numpy.ndarray], numpy.ndarray]]
+
+      Create a boolean mask filter for a given variation, if possible.
+
+      :param variation: RLBench variation identifier.
+      :param task_env: RLBench task environment instance.
+      :param obs: Latest observation for deriving fallback metadata.
+
+      :returns: Callable converting a mask array into a boolean keep mask, or ``None``.
+
+
+
+   .. py:method:: _mapping_from_scene(task_env, obs) -> Dict[int, str]
+
+      Derive a handle→name mapping directly from the RLBench scene.
+
+      :param task_env: RLBench task environment.
+      :param obs: Observation containing segmentation masks.
+
+      :returns: Mapping from object handles to resolved names.
+
+
+
+.. py:function:: parse_args(argv: Sequence[str]) -> argparse.Namespace
+
+   Parse CLI arguments for the RLBench evaluation script.
+
+   :param argv: Sequence of command-line arguments (excluding script name).
+
+   :returns: Parsed :class:`argparse.Namespace`.
+
+
+.. py:function:: main(argv: Sequence[str]) -> None
+
+   Evaluate a trained diffusion policy on RLBench tasks.
+
+   :param argv: Command-line arguments provided by :mod:`argparse` or ``sys.argv``.
+
+

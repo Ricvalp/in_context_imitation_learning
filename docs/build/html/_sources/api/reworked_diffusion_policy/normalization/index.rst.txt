@@ -1,0 +1,199 @@
+reworked_diffusion_policy.normalization
+=======================================
+
+.. py:module:: reworked_diffusion_policy.normalization
+
+.. autoapi-nested-parse::
+
+   Dataset-driven linear normalisation helpers.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.normalization.SingleFieldLinearNormalizer
+   reworked_diffusion_policy.normalization.LinearNormalizer
+
+
+Module Contents
+---------------
+
+.. py:class:: SingleFieldLinearNormalizer(scale: torch.Tensor, offset: torch.Tensor, input_stats: Dict[str, torch.Tensor])
+
+   Bases: :py:obj:`torch.nn.Module`
+
+
+   Normalises a single tensor field via an affine transform.
+
+
+   .. py:attribute:: input_stats
+
+
+   .. py:method:: create_manual(scale: torch.Tensor, offset: torch.Tensor, input_stats: Dict[str, torch.Tensor]) -> SingleFieldLinearNormalizer
+      :classmethod:
+
+
+      Instantiate a normaliser with user-provided parameters.
+
+      :param scale: Per-dimension scaling factors.
+      :param offset: Per-dimension offsets.
+      :param input_stats: Raw statistics dictionary stored for reference.
+
+      :returns: Configured :class:`SingleFieldLinearNormalizer` instance.
+
+
+
+   .. py:method:: create_identity(dim: int, dtype: torch.dtype = torch.float32) -> SingleFieldLinearNormalizer
+      :classmethod:
+
+
+      Create an identity normaliser with ``x -> x`` transformation.
+
+      :param dim: Dimensionality of the tensor to be normalised.
+      :param dtype: Tensor dtype for stored buffers.
+
+      :returns: Normaliser representing the identity transform.
+
+
+
+   .. py:method:: normalize(tensor: torch.Tensor) -> torch.Tensor
+
+      Map inputs into the normalised output range via ``x * scale + offset``.
+
+      :param tensor: Input tensor with final dimension matching ``scale`` length.
+
+      :returns: Normalised tensor with the same shape as ``tensor``.
+
+
+
+   .. py:method:: unnormalize(tensor: torch.Tensor) -> torch.Tensor
+
+      Invert :meth:`normalize` by removing the affine transform.
+
+      :param tensor: Normalised tensor previously processed by :meth:`normalize`.
+
+      :returns: Tensor mapped back into the original value range.
+
+
+
+   .. py:method:: get_input_stats() -> Dict[str, torch.Tensor]
+
+      Return the statistics gathered from the raw dataset.
+
+      :returns: Dictionary mapping statistic name to tensor values.
+
+
+
+   .. py:method:: get_output_stats() -> Dict[str, torch.Tensor]
+
+      Return the statistics after the normalisation transform.
+
+      :returns: Dictionary of transformed statistics in the output space.
+
+
+
+   .. py:method:: forward(tensor: torch.Tensor) -> torch.Tensor
+
+
+.. py:class:: LinearNormalizer
+
+   Bases: :py:obj:`torch.nn.Module`
+
+
+   Dictionary-aware collection of affine normalisers.
+
+
+   .. py:attribute:: params_dict
+
+
+   .. py:method:: __getitem__(key: str) -> SingleFieldLinearNormalizer
+
+
+   .. py:method:: __setitem__(key: str, value: SingleFieldLinearNormalizer) -> None
+
+
+   .. py:method:: normalize(x: Union[Dict[str, torch.Tensor], torch.Tensor]) -> Union[Dict[str, torch.Tensor], torch.Tensor]
+
+      Normalise either a tensor or mapping by delegating to field-specific modules.
+
+      :param x: Single tensor or dictionary of tensors to be normalised.
+
+      :returns: Normalised tensor(s) mirroring the structure of ``x``.
+
+
+
+   .. py:method:: _normalize_key(key: str, value: torch.Tensor) -> torch.Tensor
+
+
+   .. py:method:: _normalize_default(value: torch.Tensor) -> torch.Tensor
+
+
+   .. py:method:: unnormalize(x: Union[Dict[str, torch.Tensor], torch.Tensor]) -> Union[Dict[str, torch.Tensor], torch.Tensor]
+
+      Invert :meth:`normalize` for a tensor or mapping.
+
+      :param x: Normalised tensor or mapping produced by :meth:`normalize`.
+
+      :returns: Tensor(s) restored to the original data range.
+
+
+
+   .. py:method:: _unnormalize_default(value: torch.Tensor) -> torch.Tensor
+
+
+   .. py:method:: get_input_stats() -> Dict[str, Dict[str, torch.Tensor]]
+
+      Return the training-time statistics for each registered field.
+
+
+
+   .. py:method:: get_output_stats() -> Dict[str, Dict[str, torch.Tensor]]
+
+      Return post-normalisation statistics for each registered field.
+
+
+
+   .. py:method:: _load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
+
+      Copies parameters and buffers from :attr:`state_dict` into only
+      this module, but not its descendants. This is called on every submodule
+      in :meth:`~torch.nn.Module.load_state_dict`. Metadata saved for this
+      module in input :attr:`state_dict` is provided as :attr:`local_metadata`.
+      For state dicts without metadata, :attr:`local_metadata` is empty.
+      Subclasses can achieve class-specific backward compatible loading using
+      the version number at `local_metadata.get("version", None)`.
+
+      .. note::
+          :attr:`state_dict` is not the same object as the input
+          :attr:`state_dict` to :meth:`~torch.nn.Module.load_state_dict`. So
+          it can be modified.
+
+      :param state_dict: a dict containing parameters and
+                         persistent buffers.
+      :type state_dict: dict
+      :param prefix: the prefix for parameters and buffers used in this
+                     module
+      :type prefix: str
+      :param local_metadata: a dict containing the metadata for this module.
+                             See
+      :type local_metadata: dict
+      :param strict: whether to strictly enforce that the keys in
+                     :attr:`state_dict` with :attr:`prefix` match the names of
+                     parameters and buffers in this module
+      :type strict: bool
+      :param missing_keys: if ``strict=True``, add missing keys to
+                           this list
+      :type missing_keys: list of str
+      :param unexpected_keys: if ``strict=True``, add unexpected
+                              keys to this list
+      :type unexpected_keys: list of str
+      :param error_msgs: error messages should be added to this
+                         list, and will be reported together in
+                         :meth:`~torch.nn.Module.load_state_dict`
+      :type error_msgs: list of str
+
+
+

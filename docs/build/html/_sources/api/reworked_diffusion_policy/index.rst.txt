@@ -1,0 +1,29 @@
+reworked_diffusion_policy
+=========================
+
+.. py:module:: reworked_diffusion_policy
+
+.. autoapi-nested-parse::
+
+   Lightweight 3D diffusion policy training stack.
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /api/reworked_diffusion_policy/checkpoint/index
+   /api/reworked_diffusion_policy/config/index
+   /api/reworked_diffusion_policy/dataset/index
+   /api/reworked_diffusion_policy/eval_rlbench/index
+   /api/reworked_diffusion_policy/models/index
+   /api/reworked_diffusion_policy/normalization/index
+   /api/reworked_diffusion_policy/rlbench_integration/index
+   /api/reworked_diffusion_policy/train/index
+   /api/reworked_diffusion_policy/utils/index
+   /api/reworked_diffusion_policy/visualize_temporal_dataset/index
+
+

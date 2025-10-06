@@ -1,0 +1,106 @@
+reworked_diffusion_policy.train
+===============================
+
+.. py:module:: reworked_diffusion_policy.train
+
+.. autoapi-nested-parse::
+
+   Entry point for training the lightweight 3D diffusion policy.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.train.FLAGS
+   reworked_diffusion_policy.train.default_config_path
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   reworked_diffusion_policy.train._apply_overrides
+   reworked_diffusion_policy.train._to_device
+   reworked_diffusion_policy.train.build_dataloaders
+   reworked_diffusion_policy.train.build_model
+   reworked_diffusion_policy.train.evaluate
+   reworked_diffusion_policy.train.train
+   reworked_diffusion_policy.train.main
+
+
+Module Contents
+---------------
+
+.. py:data:: FLAGS
+
+.. py:data:: default_config_path
+
+.. py:function:: _apply_overrides(cfg: ml_collections.ConfigDict) -> ml_collections.ConfigDict
+
+   Apply CLI flag overrides on top of the resolved configuration.
+
+   :param cfg: Configuration produced by :func:`get_config`.
+
+   :returns: Updated configuration reflecting any CLI overrides.
+
+
+.. py:function:: _to_device(batch: Dict[str, torch.Tensor], device: torch.device) -> Dict[str, torch.Tensor]
+
+   Move every tensor in ``batch`` to ``device`` using non-blocking copies.
+
+   :param batch: Mini-batch mapping field names to tensors.
+   :param device: Destination device.
+
+   :returns: Dictionary containing tensors located on ``device``.
+
+
+.. py:function:: build_dataloaders(cfg: ml_collections.ConfigDict)
+
+   Construct dataset and data loaders based on ``cfg``.
+
+   :param cfg: Training configuration.
+
+   :returns: Tuple ``(dataset, train_loader, eval_loader)``.
+
+
+.. py:function:: build_model(cfg: ml_collections.ConfigDict) -> reworked_diffusion_policy.models.diffusion_policy.DiffusionPolicy
+
+   Instantiate the diffusion policy from the configuration tree.
+
+   :param cfg: Training configuration.
+
+   :returns: Configured :class:`DiffusionPolicy` instance.
+
+
+.. py:function:: evaluate(model: reworked_diffusion_policy.models.diffusion_policy.DiffusionPolicy, dataloader: torch.utils.data.DataLoader, device: torch.device, cfg: ml_collections.ConfigDict, *, wandb_run=None, epoch: int | None = None) -> float
+
+   Evaluate ``model`` over ``dataloader`` and return the mean MSE.
+
+   :param model: Policy to evaluate.
+   :param dataloader: Data loader providing evaluation batches.
+   :param device: Target device for tensors.
+   :param cfg: Configuration controlling evaluation side-effects.
+   :param wandb_run: Optional active Weights & Biases run.
+   :param epoch: Optional epoch index for logging.
+
+   :returns: Mean squared error aggregated over the evaluation set.
+
+
+.. py:function:: train(argv) -> None
+
+   Entry point used by both ``absl.app`` and :mod:`sphinx` automation.
+
+   :param argv: Command-line arguments supplied by :mod:`absl`.
+
+
+.. py:function:: main(argv) -> None
+
+   Wrapper that mirrors ``absl.app`` expectations.
+
+   :param argv: Raw CLI arguments from :mod:`absl.app`.
+
+
