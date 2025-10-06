@@ -1,0 +1,3 @@
+[submodule "rlbench_dataset_gen"]
+	path = rlbench_dataset_gen
+	url = git@github.com:david-knigge/rlbench_dataset_gen.git
