@@ -41,7 +41,14 @@ from reworked_diffusion_policy.dataset import (  # noqa: E402  (import after pat
 
 
 def _split_point_cloud(tensor: torch.Tensor) -> Tuple[np.ndarray, np.ndarray]:
-    """Return (points, colors) with colors encoded as uint8."""
+    """Return ``(points, colors)`` with colours encoded as ``uint8``.
+
+    Args:
+        tensor: Point cloud tensor ``(N, C)`` where ``C`` ≥ 3 and optionally ≥ 6.
+
+    Returns:
+        Tuple consisting of XYZ coordinates and colour array.
+    """
     array = tensor.detach().cpu().numpy().astype(np.float32)
     if array.shape[1] >= 6:
         points = array[:, :3]
@@ -58,7 +65,14 @@ def _split_point_cloud(tensor: torch.Tensor) -> Tuple[np.ndarray, np.ndarray]:
 
 
 def _pose_from_tensor(tensor: torch.Tensor) -> Optional[Tuple[np.ndarray, np.ndarray, Optional[float]]]:
-    """Extract (position, quaternion wxyz, gripper) from a tensor, if possible."""
+    """Extract ``(position, quaternion wxyz, gripper)`` from a tensor.
+
+    Args:
+        tensor: Action tensor for a single timestep.
+
+    Returns:
+        Tuple containing position, quaternion and optional gripper value or ``None`` when unavailable.
+    """
     array = tensor.detach().cpu().numpy().astype(np.float32)
     if array.shape[0] < 3:
         return None
@@ -81,7 +95,15 @@ def _update_action_frames(
     frames: Sequence[viser.FrameHandle],
     actions: torch.Tensor,
 ) -> List[Optional[float]]:
-    """Update viser frames with future gripper poses and return gripper values."""
+    """Update viser frames with future gripper poses and return gripper values.
+
+    Args:
+        frames: Sequence of viser frames to update in-place.
+        actions: Action tensor ``(H, D)``.
+
+    Returns:
+        List of gripper openness values per frame (or ``None`` when missing).
+    """
     grip_vals: List[Optional[float]] = []
     horizon = actions.shape[0]
     for idx, frame in enumerate(frames):
@@ -102,6 +124,15 @@ def _update_action_frames(
 
 
 def _format_grippers(tag: str, values: Iterable[Optional[float]]) -> str:
+    """Format gripper signals for display.
+
+    Args:
+        tag: Label used in the formatted string.
+        values: Iterable of optional gripper readings.
+
+    Returns:
+        Human-readable summary string.
+    """
     filtered = [v for v in values if v is not None]
     if not filtered:
         return f"- {tag}: n/a"
@@ -111,6 +142,14 @@ def _format_grippers(tag: str, values: Iterable[Optional[float]]) -> str:
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    """Parse CLI arguments for the interactive dataset visualiser.
+
+    Args:
+        argv: Optional override for ``sys.argv[1:]``.
+
+    Returns:
+        Parsed :class:`argparse.Namespace` with configuration values.
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Create an RLBenchTemporalH5Dataset data loader and explore mini-batches "
@@ -140,6 +179,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
+    """Launch the viser-based dataset explorer.
+
+    Args:
+        argv: Optional override for ``sys.argv[1:]``.
+    """
     args = parse_args(argv)
 
     dataset_cfg = DatasetConfig(

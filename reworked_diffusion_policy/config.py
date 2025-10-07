@@ -6,6 +6,11 @@ from ml_collections import ConfigDict
 
 
 def get_config() -> ConfigDict:
+    """Return the default training configuration tree.
+
+    Returns:
+        Fresh :class:`ml_collections.ConfigDict` describing training defaults.
+    """
     cfg = ConfigDict()
 
     # Data -----------------------------------------------------------------

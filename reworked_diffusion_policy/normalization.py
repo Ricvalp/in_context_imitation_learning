@@ -9,16 +9,28 @@ import torch.nn as nn
 
 
 def _dict_apply(data: Dict[str, torch.Tensor], fn):
+    """Apply ``fn`` to every value in ``data`` while preserving keys.
+
+    Args:
+        data: Mapping to transform.
+        fn: Callable accepting ``(key, value)`` and returning the new value.
+
+    Returns:
+        Dictionary produced by applying ``fn`` to each element of ``data``.
+    """
     return {key: fn(key, value) for key, value in data.items()}
 
 
 class _StatsModule(nn.Module):
+    """Stores per-field statistics as registered buffers."""
+
     def __init__(self, stats: Dict[str, torch.Tensor]) -> None:
         super().__init__()
         for name, tensor in stats.items():
             self.register_buffer(name, tensor.clone())
 
     def as_dict(self) -> Dict[str, torch.Tensor]:
+        """Return a detached copy of the underlying statistics."""
         return {name: buf.clone() for name, buf in self._buffers.items()}
 
 
@@ -47,6 +59,16 @@ class SingleFieldLinearNormalizer(nn.Module):
         offset: torch.Tensor,
         input_stats: Dict[str, torch.Tensor],
     ) -> "SingleFieldLinearNormalizer":
+        """Instantiate a normaliser with user-provided parameters.
+
+        Args:
+            scale: Per-dimension scaling factors.
+            offset: Per-dimension offsets.
+            input_stats: Raw statistics dictionary stored for reference.
+
+        Returns:
+            Configured :class:`SingleFieldLinearNormalizer` instance.
+        """
         return cls(scale, offset, input_stats)
 
     @classmethod
@@ -55,6 +77,15 @@ class SingleFieldLinearNormalizer(nn.Module):
         dim: int,
         dtype: torch.dtype = torch.float32,
     ) -> "SingleFieldLinearNormalizer":
+        """Create an identity normaliser with ``x -> x`` transformation.
+
+        Args:
+            dim: Dimensionality of the tensor to be normalised.
+            dtype: Tensor dtype for stored buffers.
+
+        Returns:
+            Normaliser representing the identity transform.
+        """
         scale = torch.ones(dim, dtype=dtype)
         offset = torch.zeros(dim, dtype=dtype)
         stats = {
@@ -66,21 +97,47 @@ class SingleFieldLinearNormalizer(nn.Module):
         return cls(scale, offset, stats)
 
     def normalize(self, tensor: torch.Tensor) -> torch.Tensor:
+        """Map inputs into the normalised output range via ``x * scale + offset``.
+
+        Args:
+            tensor: Input tensor with final dimension matching ``scale`` length.
+
+        Returns:
+            Normalised tensor with the same shape as ``tensor``.
+        """
         dim = self.scale.shape[0]
         flat = tensor.reshape(-1, dim)
         flat = flat * self.scale + self.offset
         return flat.reshape_as(tensor)
 
     def unnormalize(self, tensor: torch.Tensor) -> torch.Tensor:
+        """Invert :meth:`normalize` by removing the affine transform.
+
+        Args:
+            tensor: Normalised tensor previously processed by :meth:`normalize`.
+
+        Returns:
+            Tensor mapped back into the original value range.
+        """
         dim = self.scale.shape[0]
         flat = tensor.reshape(-1, dim)
         flat = (flat - self.offset) / self.scale
         return flat.reshape_as(tensor)
 
     def get_input_stats(self) -> Dict[str, torch.Tensor]:
+        """Return the statistics gathered from the raw dataset.
+
+        Returns:
+            Dictionary mapping statistic name to tensor values.
+        """
         return self.input_stats.as_dict()
 
     def get_output_stats(self) -> Dict[str, torch.Tensor]:
+        """Return the statistics after the normalisation transform.
+
+        Returns:
+            Dictionary of transformed statistics in the output space.
+        """
         return {name: self.normalize(value) for name, value in self.input_stats.as_dict().items()}
 
     def forward(self, tensor: torch.Tensor) -> torch.Tensor:  # pragma: no cover - nn.Module API
@@ -105,6 +162,14 @@ class LinearNormalizer(nn.Module):
         self.params_dict[key] = value
 
     def normalize(self, x: Union[Dict[str, torch.Tensor], torch.Tensor]) -> Union[Dict[str, torch.Tensor], torch.Tensor]:
+        """Normalise either a tensor or mapping by delegating to field-specific modules.
+
+        Args:
+            x: Single tensor or dictionary of tensors to be normalised.
+
+        Returns:
+            Normalised tensor(s) mirroring the structure of ``x``.
+        """
         if isinstance(x, dict):
             return _dict_apply(x, self._normalize_key)
         return self._normalize_default(x)
@@ -120,6 +185,14 @@ class LinearNormalizer(nn.Module):
         return self.params_dict["_default"].normalize(value)
 
     def unnormalize(self, x: Union[Dict[str, torch.Tensor], torch.Tensor]) -> Union[Dict[str, torch.Tensor], torch.Tensor]:
+        """Invert :meth:`normalize` for a tensor or mapping.
+
+        Args:
+            x: Normalised tensor or mapping produced by :meth:`normalize`.
+
+        Returns:
+            Tensor(s) restored to the original data range.
+        """
         if isinstance(x, dict):
             return {key: self[key].unnormalize(value) for key, value in x.items()}
         return self._unnormalize_default(x)
@@ -130,9 +203,11 @@ class LinearNormalizer(nn.Module):
         return self.params_dict["_default"].unnormalize(value)
 
     def get_input_stats(self) -> Dict[str, Dict[str, torch.Tensor]]:
+        """Return the training-time statistics for each registered field."""
         return {key: normalizer.get_input_stats() for key, normalizer in self.params_dict.items()}
 
     def get_output_stats(self) -> Dict[str, Dict[str, torch.Tensor]]:
+        """Return post-normalisation statistics for each registered field."""
         return {key: normalizer.get_output_stats() for key, normalizer in self.params_dict.items()}
 
     def _load_from_state_dict(

@@ -44,6 +44,14 @@ LOG_POINTCLOUD_INTERVAL = 20
 
 
 def _load_config(path: str | None) -> ConfigDict:
+    """Load the training configuration, optionally from a Python module file.
+
+    Args:
+        path: Optional path to a Python module defining ``get_config``.
+
+    Returns:
+        Configuration dictionary merged with any overrides from ``path``.
+    """
     base_cfg = get_config()
     if path is None:
         return base_cfg
@@ -64,6 +72,14 @@ def _load_config(path: str | None) -> ConfigDict:
 
 
 def _build_model(cfg: ConfigDict) -> DiffusionPolicy:
+    """Construct a :class:`DiffusionPolicy` for evaluation using ``cfg``.
+
+    Args:
+        cfg: Configuration dictionary describing the policy architecture.
+
+    Returns:
+        Initialised :class:`DiffusionPolicy` instance.
+    """
     model_cfg = DiffusionPolicyConfig(
         horizon=cfg.horizon,
         n_obs_steps=cfg.n_obs_steps,
@@ -86,6 +102,12 @@ def _build_model(cfg: ConfigDict) -> DiffusionPolicy:
 
 
 def _append_camera_frames(obs, buffers: dict) -> None:
+    """Append RGB frames for each camera into ``buffers`` for logging.
+
+    Args:
+        obs: RLBench observation providing RGB frames.
+        buffers: Mapping from camera name to list of frames.
+    """
     for name in CAMERA_NAMES:
         frame = getattr(obs, f"{name}_rgb", None)
         if frame is None:
@@ -103,6 +125,13 @@ class MaskFilterBuilder:
         ignore_names: Sequence[str],
         fallback_ids: Sequence[int],
     ) -> None:
+        """Parse mask metadata and pre-compute name/id lookups.
+
+        Args:
+            dataset_path: Path to a dataset file containing mask metadata.
+            ignore_names: Mask names to drop for every variation.
+            fallback_ids: Mask ids to drop when metadata is unavailable.
+        """
         self._fallback_ids = {int(v) for v in fallback_ids}
         self._ignore_names = {name.lower() for name in ignore_names}
         self._variation_mapping: Dict[int, Dict[int, str]] = {}
@@ -147,6 +176,16 @@ class MaskFilterBuilder:
         task_env,
         obs,
     ) -> Optional[Callable[[np.ndarray], np.ndarray]]:
+        """Create a boolean mask filter for a given variation, if possible.
+
+        Args:
+            variation: RLBench variation identifier.
+            task_env: RLBench task environment instance.
+            obs: Latest observation for deriving fallback metadata.
+
+        Returns:
+            Callable converting a mask array into a boolean keep mask, or ``None``.
+        """
         mapping = self._variation_mapping.get(variation)
         if mapping is None:
             mapping = self._mapping_from_scene(task_env, obs)
@@ -174,6 +213,15 @@ class MaskFilterBuilder:
         return _filter
 
     def _mapping_from_scene(self, task_env, obs) -> Dict[int, str]:
+        """Derive a handle→name mapping directly from the RLBench scene.
+
+        Args:
+            task_env: RLBench task environment.
+            obs: Observation containing segmentation masks.
+
+        Returns:
+            Mapping from object handles to resolved names.
+        """
         if task_env is None:
             return {}
 
@@ -230,6 +278,14 @@ class MaskFilterBuilder:
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
+    """Parse CLI arguments for the RLBench evaluation script.
+
+    Args:
+        argv: Sequence of command-line arguments (excluding script name).
+
+    Returns:
+        Parsed :class:`argparse.Namespace`.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to the trained checkpoint")
     parser.add_argument("--config", type=str, default=None, help="Optional config file to override defaults")
@@ -255,6 +311,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str]) -> None:
+    """Evaluate a trained diffusion policy on RLBench tasks.
+
+    Args:
+        argv: Command-line arguments provided by :mod:`argparse` or ``sys.argv``.
+    """
     args = parse_args(argv)
 
     if args.executed_actions <= 0:

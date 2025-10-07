@@ -40,6 +40,8 @@ CAMERA_NAMES: Tuple[str, ...] = (
 
 @dataclass
 class SimulationInputConfig:
+    """Configuration describing how to prepare simulation inputs."""
+
     sample_points: int
     n_obs_steps: int
     use_point_colors: bool
@@ -47,6 +49,11 @@ class SimulationInputConfig:
 
 
 def create_action_mode() -> MoveArmThenGripper:
+    """Build the default RLBench action mode (pose + discrete gripper).
+
+    Returns:
+        Configured :class:`rlbench.action_modes.action_mode.MoveArmThenGripper`.
+    """
     return MoveArmThenGripper(EndEffectorPoseViaIK(), Discrete())
 
 
@@ -55,6 +62,15 @@ def create_observation_config(
     image_size: Sequence[int] = (128, 128),
     renderer: str = "opengl3",
 ) -> ObservationConfig:
+    """Produce an :class:`rlbench.ObservationConfig` matching the training data.
+
+    Args:
+        image_size: ``(width, height)`` per camera.
+        renderer: Either ``"opengl"`` or ``"opengl3"``.
+
+    Returns:
+        Observation configuration enabling RGB, masks and point clouds.
+    """
     obs_config = ObservationConfig()
     obs_config.set_all(False)
 
@@ -88,13 +104,32 @@ class ObservationProcessor:
     """Converts RLBench observations into model-ready tensors."""
 
     def __init__(self, cfg: SimulationInputConfig) -> None:
+        """Initialise the processor with sampling hyper-parameters.
+
+        Args:
+            cfg: Simulation input configuration describing sampling behaviour.
+        """
         self.cfg = cfg
         self._mask_filter: Optional[Callable[[np.ndarray], np.ndarray]] = None
 
     def set_mask_filter(self, mask_filter: Optional[Callable[[np.ndarray], np.ndarray]]) -> None:
+        """Set an optional binary mask filter applied to each camera image.
+
+        Args:
+            mask_filter: Callable receiving a flattened segmentation mask and
+                returning a boolean mask where ``True`` keeps a point.
+        """
         self._mask_filter = mask_filter
 
     def extract(self, obs) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Convert an RLBench observation into model-ready tensors.
+
+        Args:
+            obs: RLBench observation object.
+
+        Returns:
+            Tuple ``(point_features, agent_state)`` ready for inference.
+        """
         points, colors = self._merge_point_clouds(obs)
         points_t = torch.from_numpy(points.astype(np.float32))
         if self.cfg.use_point_colors and colors is not None:
@@ -121,6 +156,14 @@ class ObservationProcessor:
 
     # ------------------------------------------------------------------
     def _merge_point_clouds(self, obs) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+        """Merge per-camera point clouds and apply optional mask filtering.
+
+        Args:
+            obs: RLBench observation instance.
+
+        Returns:
+            Tuple of ``(points, colours)`` as numpy arrays.
+        """
         merged_points: List[np.ndarray] = []
         merged_colors: List[np.ndarray] = []
 
@@ -175,6 +218,14 @@ class ObservationProcessor:
         return all_points, all_colors
 
     def _extract_agent_state(self, obs) -> torch.Tensor:
+        """Assemble the low-dimensional agent state from the observation.
+
+        Args:
+            obs: RLBench observation instance.
+
+        Returns:
+            Tensor containing the agent state vector.
+        """
         pose = np.asarray(obs.gripper_pose, dtype=np.float32).reshape(-1)
         open_amount = np.array([float(obs.gripper_open)], dtype=np.float32)
         state = np.concatenate([pose, open_amount], axis=0)
@@ -185,6 +236,11 @@ class ObservationHistory:
     """Maintains the sliding window of observations for conditioning."""
 
     def __init__(self, capacity: int) -> None:
+        """Initialise the sliding window.
+
+        Args:
+            capacity: Number of frames to keep in the buffer.
+        """
         if capacity <= 0:
             raise ValueError("capacity must be positive")
         self.capacity = capacity
@@ -192,14 +248,29 @@ class ObservationHistory:
         self._agents: Deque[torch.Tensor] = deque(maxlen=capacity)
 
     def reset(self) -> None:
+        """Clear the stored observation window."""
         self._points.clear()
         self._agents.clear()
 
     def append(self, features: torch.Tensor, agent_state: torch.Tensor) -> None:
+        """Push a new observation into the sliding window.
+
+        Args:
+            features: Point-cloud features for one observation frame.
+            agent_state: Low-dimensional agent state for the same frame.
+        """
         self._points.append(features.detach().clone())
         self._agents.append(agent_state.detach().clone())
 
     def stacked(self, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Return ``capacity`` frames stacked along the time dimension.
+
+        Args:
+            device: Target device for the stacked tensors.
+
+        Returns:
+            Tuple ``(point_clouds, agent_states)`` matching the configured window.
+        """
         if not self._points:
             raise RuntimeError("Observation history is empty; call append() first")
         points_list = list(self._points)
@@ -212,12 +283,25 @@ class ObservationHistory:
         return points_tensor, agent_tensor
 
     def latest_agent_state(self) -> torch.Tensor:
+        """Return the most recently observed agent state.
+
+        Returns:
+            Tensor containing the latest agent state.
+        """
         if not self._agents:
             raise RuntimeError("Observation history is empty")
         return self._agents[-1]
 
 
 def canonicalise_task_name(name: str) -> str:
+    """Convert a task filename or class name into canonical snake_case.
+
+    Args:
+        name: Original RLBench task identifier.
+
+    Returns:
+        Normalised snake_case name used by RLBench loaders.
+    """
     clean = name.replace(".py", "").strip()
     if clean.lower() == clean:
         return clean
@@ -226,6 +310,14 @@ def canonicalise_task_name(name: str) -> str:
 
 
 def resolve_task_class(name: str):
+    """Return the RLBench task class corresponding to ``name``.
+
+    Args:
+        name: Task filename or class name.
+
+    Returns:
+        RLBench task class object.
+    """
     canonical = canonicalise_task_name(name)
     return task_file_to_task_class(canonical)
 
@@ -235,6 +327,15 @@ def action_plan_to_command(
     *,
     last_agent_state: torch.Tensor,
 ) -> np.ndarray:
+    """Convert predicted action vectors into RLBench-compatible commands.
+
+    Args:
+        action_plan: Predicted action vector for a single timestep.
+        last_agent_state: Latest agent state used when renormalising quaternions.
+
+    Returns:
+        Command array combining pose (xyz + quaternion) and gripper state.
+    """
     action_np = action_plan.detach().cpu().numpy()
     pose = action_np[:7].copy()
     quat = pose[3:]
@@ -255,6 +356,16 @@ def instantiate_environment(
     obs_config: Optional[ObservationConfig] = None,
     headless: bool = True,
 ) -> Environment:
+    """Launch an RLBench environment with sensible defaults.
+
+    Args:
+        action_mode: Optional pre-built action mode to reuse.
+        obs_config: Optional observation configuration to reuse.
+        headless: Disable rendering windows when ``True``.
+
+    Returns:
+        RLBench :class:`Environment` instance ready for rollouts.
+    """
     if action_mode is None:
         action_mode = create_action_mode()
     if obs_config is None:

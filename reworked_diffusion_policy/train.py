@@ -51,6 +51,14 @@ flags.DEFINE_multi_string("task", [], "RLBench task names to include when readin
 
 
 def _apply_overrides(cfg: ConfigDict) -> ConfigDict:
+    """Apply CLI flag overrides on top of the resolved configuration.
+
+    Args:
+        cfg: Configuration produced by :func:`get_config`.
+
+    Returns:
+        Updated configuration reflecting any CLI overrides.
+    """
     if FLAGS.dataset_path:
         cfg.dataset_path = FLAGS.dataset_path
     if FLAGS.batch_size:
@@ -83,10 +91,27 @@ def _apply_overrides(cfg: ConfigDict) -> ConfigDict:
 
 
 def _to_device(batch: Dict[str, torch.Tensor], device: torch.device) -> Dict[str, torch.Tensor]:
+    """Move every tensor in ``batch`` to ``device`` using non-blocking copies.
+
+    Args:
+        batch: Mini-batch mapping field names to tensors.
+        device: Destination device.
+
+    Returns:
+        Dictionary containing tensors located on ``device``.
+    """
     return {key: value.to(device, non_blocking=True) for key, value in batch.items()}
 
 
 def build_dataloaders(cfg: ConfigDict):
+    """Construct dataset and data loaders based on ``cfg``.
+
+    Args:
+        cfg: Training configuration.
+
+    Returns:
+        Tuple ``(dataset, train_loader, eval_loader)``.
+    """
     dataset_cfg = DatasetConfig(
         path=cfg.dataset_path,
         sample_points=cfg.sample_points,
@@ -122,6 +147,14 @@ def build_dataloaders(cfg: ConfigDict):
 
 
 def build_model(cfg: ConfigDict) -> DiffusionPolicy:
+    """Instantiate the diffusion policy from the configuration tree.
+
+    Args:
+        cfg: Training configuration.
+
+    Returns:
+        Configured :class:`DiffusionPolicy` instance.
+    """
     model_cfg = DiffusionPolicyConfig(
         horizon=cfg.horizon,
         n_obs_steps=cfg.n_obs_steps,
@@ -152,6 +185,19 @@ def evaluate(
     wandb_run=None,
     epoch: int | None = None,
 ) -> float:
+    """Evaluate ``model`` over ``dataloader`` and return the mean MSE.
+
+    Args:
+        model: Policy to evaluate.
+        dataloader: Data loader providing evaluation batches.
+        device: Target device for tensors.
+        cfg: Configuration controlling evaluation side-effects.
+        wandb_run: Optional active Weights & Biases run.
+        epoch: Optional epoch index for logging.
+
+    Returns:
+        Mean squared error aggregated over the evaluation set.
+    """
     model.eval()
     total_loss = 0.0
     total_samples = 0
@@ -201,6 +247,11 @@ def evaluate(
 
 
 def train(argv) -> None:
+    """Entry point used by both ``absl.app`` and :mod:`sphinx` automation.
+
+    Args:
+        argv: Command-line arguments supplied by :mod:`absl`.
+    """
     del argv
     cfg = get_config()
     cfg = cfg.copy_and_resolve_references()
@@ -352,6 +403,11 @@ def train(argv) -> None:
 
 
 def main(argv) -> None:
+    """Wrapper that mirrors ``absl.app`` expectations.
+
+    Args:
+        argv: Raw CLI arguments from :mod:`absl.app`.
+    """
     train(argv)
 
 

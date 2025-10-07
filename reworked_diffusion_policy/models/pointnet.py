@@ -10,6 +10,16 @@ import torch.nn.functional as F
 
 
 def _make_mlp(sizes: Sequence[int], *, activation=nn.ReLU, layer_norm: bool = False) -> nn.Sequential:
+    """Construct a fully-connected stack with optional layer norm blocks.
+
+    Args:
+        sizes: Sequence of layer sizes including input and output dims.
+        activation: Activation constructor to insert between linear layers.
+        layer_norm: Whether to add :class:`nn.LayerNorm` after each linear layer.
+
+    Returns:
+        :class:`nn.Sequential` implementing the requested MLP.
+    """
     layers = []
     for idx in range(len(sizes) - 1):
         in_dim, out_dim = sizes[idx], sizes[idx + 1]
@@ -32,6 +42,14 @@ class PointNetEncoder(nn.Module):
         *,
         use_layernorm: bool = True,
     ) -> None:
+        """Initialise the PointNet encoder described by ``hidden_dims``.
+
+        Args:
+            in_channels: Number of features per input point.
+            hidden_dims: Hidden layer widths for the shared MLP.
+            out_dim: Output feature dimension after pooling.
+            use_layernorm: Insert :class:`nn.LayerNorm` after each linear layer.
+        """
         super().__init__()
         self.out_dim = out_dim
         mlp_sizes = [in_channels, *hidden_dims, out_dim]
@@ -45,6 +63,14 @@ class PointNetEncoder(nn.Module):
         self.mlp = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Encode point-wise features followed by a max pooling operation.
+
+        Args:
+            x: Input tensor with shape ``(B, N, C)``.
+
+        Returns:
+            Encoded tensor with shape ``(B, out_dim)``.
+        """
         # x: (B, N, C)
         b, n, c = x.shape
         x = self.mlp(x)
@@ -62,6 +88,13 @@ class ObservationEncoder(nn.Module):
         state_dims: Sequence[int],
         n_obs_steps: int,
     ) -> None:
+        """Create the observation encoder for ``n_obs_steps`` frames.
+
+        Args:
+            pointnet: PointNet encoder used for per-frame point clouds.
+            state_dims: Layer sizes for the state MLP (input → hidden → output).
+            n_obs_steps: Number of observation frames concatenated.
+        """
         super().__init__()
         self.pointnet = pointnet
         self.n_obs_steps = n_obs_steps
@@ -71,6 +104,15 @@ class ObservationEncoder(nn.Module):
         self.state_out_dim = state_dims[-1]
 
     def forward(self, point_clouds: torch.Tensor, agent_pos: torch.Tensor) -> torch.Tensor:
+        """Encode stacked observations of point clouds and agent state.
+
+        Args:
+            point_clouds: Tensor ``(B, To, N, C)`` with stacked point clouds.
+            agent_pos: Tensor ``(B, To, D)`` with low-dimensional states.
+
+        Returns:
+            Flattened conditioning vector with shape ``(B, To * F)``.
+        """
         # point_clouds: (B, To, N, C)
         b, tobs, npts, feat = point_clouds.shape
         if tobs != self.n_obs_steps:

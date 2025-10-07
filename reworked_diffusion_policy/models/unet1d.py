@@ -11,11 +11,21 @@ import torch.nn.functional as F
 
 
 class SinusoidalPosEmb(nn.Module):
+    """Classic DDPM-style sinusoidal timestep embedding."""
+
     def __init__(self, dim: int) -> None:
         super().__init__()
         self.dim = dim
 
     def forward(self, timesteps: torch.Tensor) -> torch.Tensor:
+        """Map scalar timesteps into a sinusoidal embedding.
+
+        Args:
+            timesteps: Integer or float tensor of timestep indices.
+
+        Returns:
+            Tensor of shape ``(B, dim)`` containing positional encodings.
+        """
         device = timesteps.device
         half_dim = self.dim // 2
         exponent = -torch.arange(half_dim, dtype=torch.float32, device=device)
@@ -29,6 +39,8 @@ class SinusoidalPosEmb(nn.Module):
 
 
 class ResidualBlock(nn.Module):
+    """Residual block with GroupNorm and additive conditioning."""
+
     def __init__(
         self,
         in_channels: int,
@@ -38,6 +50,15 @@ class ResidualBlock(nn.Module):
         kernel_size: int = 3,
         num_groups: int = 8,
     ) -> None:
+        """Initialise the residual block.
+
+        Args:
+            in_channels: Number of channels in the input tensor.
+            out_channels: Number of channels to produce.
+            cond_dim: Dimension of the conditioning vector.
+            kernel_size: Convolution kernel size.
+            num_groups: Number of groups for :class:`nn.GroupNorm`.
+        """
         super().__init__()
         padding = kernel_size // 2
         self.norm1 = nn.GroupNorm(num_groups, in_channels)
@@ -51,6 +72,15 @@ class ResidualBlock(nn.Module):
             self.skip = nn.Identity()
 
     def forward(self, x: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+        """Apply the residual transformation conditioned on ``cond``.
+
+        Args:
+            x: Input feature map ``(B, C, T)``.
+            cond: Conditioning tensor ``(B, cond_dim)``.
+
+        Returns:
+            Tensor matching the shape of ``x``.
+        """
         h = self.norm1(x)
         h = F.silu(h)
         h = self.conv1(h)
@@ -63,6 +93,8 @@ class ResidualBlock(nn.Module):
 
 
 class DownBlock(nn.Module):
+    """U-Net downsampling stage returning the feature map for skip-connections."""
+
     def __init__(
         self,
         in_channels: int,
@@ -74,6 +106,17 @@ class DownBlock(nn.Module):
         num_groups: int = 8,
         downsample: bool = True,
     ) -> None:
+        """Initialise the downsampling block.
+
+        Args:
+            in_channels: Channels received from the previous layer.
+            out_channels: Channels produced before downsampling.
+            next_channels: Channels produced after downsampling.
+            cond_dim: Dimension of the conditioning vector.
+            kernel_size: Convolution kernel size.
+            num_groups: Group count used for normalisation.
+            downsample: Whether to apply stride-2 convolution at the end.
+        """
         super().__init__()
         self.res_blocks = nn.ModuleList(
             [
@@ -94,6 +137,15 @@ class DownBlock(nn.Module):
             self.downsample = nn.Conv1d(out_channels, next_channels, 3, stride=2, padding=1)
 
     def forward(self, x: torch.Tensor, cond: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Run residual blocks then optionally downsample, returning ``(x, skip)``.
+
+        Args:
+            x: Input feature map ``(B, C, T)``.
+            cond: Conditioning tensor ``(B, cond_dim)``.
+
+        Returns:
+            Tuple of the downsampled tensor and the skip connection tensor.
+        """
         for block in self.res_blocks:
             x = block(x, cond)
         skip = x
@@ -103,6 +155,8 @@ class DownBlock(nn.Module):
 
 
 class UpBlock(nn.Module):
+    """U-Net upsampling stage that merges the skip path before residual blocks."""
+
     def __init__(
         self,
         in_channels: int,
@@ -115,6 +169,18 @@ class UpBlock(nn.Module):
         upsample: bool = True,
         upsample_channels: int | None = None,
     ) -> None:
+        """Initialise the upsampling block.
+
+        Args:
+            in_channels: Channels from the previous layer.
+            out_channels: Channels produced after processing.
+            skip_channels: Channels provided via the skip connection.
+            cond_dim: Dimension of the conditioning vector.
+            kernel_size: Convolution kernel size.
+            num_groups: Group count used for normalisation.
+            upsample: Whether to apply deconvolutional upsampling.
+            upsample_channels: Channels produced by the upsampling layer when used.
+        """
         super().__init__()
         self.upsample = None
         self.upsampled_channels = in_channels
@@ -137,6 +203,16 @@ class UpBlock(nn.Module):
         )
 
     def forward(self, x: torch.Tensor, skip: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+        """Upsample ``x``, align with ``skip`` and apply residual refinement.
+
+        Args:
+            x: Input feature map from the previous layer.
+            skip: Skip connection tensor from the contracting path.
+            cond: Conditioning tensor ``(B, cond_dim)``.
+
+        Returns:
+            Refined feature map with the same channels as ``out_channels``.
+        """
         if self.upsample is not None:
             x = self.upsample(x)
         if x.shape[-1] != skip.shape[-1]:
@@ -163,6 +239,15 @@ class ConditionalUNet1D(nn.Module):
         kernel_size: int,
         num_groups: int,
     ) -> None:
+        """Build the conditional 1D UNet.
+
+        Args:
+            input_dim: Dimensionality of each action vector.
+            global_cond_dim: Size of the global conditioning vector.
+            hidden_dims: Channels for the encoder/decoder stages.
+            kernel_size: Convolution kernel size in residual blocks.
+            num_groups: Group count used for all normalisation layers.
+        """
         super().__init__()
         self.input_proj = nn.Conv1d(input_dim, hidden_dims[0], kernel_size=1)
 
@@ -238,6 +323,16 @@ class ConditionalUNet1D(nn.Module):
         self.output_proj = nn.Conv1d(hidden_dims[0], input_dim, kernel_size=1)
 
     def forward(self, sample: torch.Tensor, timesteps: torch.Tensor, global_cond: torch.Tensor) -> torch.Tensor:
+        """Predict the denoising velocity for ``sample`` given the conditions.
+
+        Args:
+            sample: Noisy action trajectory ``(B, T, C)``.
+            timesteps: Diffusion timestep indices ``(B,)``.
+            global_cond: Conditioning tensor ``(B, cond_dim)`` from the encoder.
+
+        Returns:
+            Predicted noise tensor matching the shape of ``sample``.
+        """
         # sample: (B, T, C)
         x = sample.permute(0, 2, 1)
         x = self.input_proj(x)

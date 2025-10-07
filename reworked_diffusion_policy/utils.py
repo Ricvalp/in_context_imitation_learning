@@ -12,6 +12,11 @@ import wandb
 
 
 def set_seed(seed: int) -> None:
+    """Seed Python, NumPy and PyTorch RNGs for reproducibility.
+
+    Args:
+        seed: Seed value forwarded to all RNGs.
+    """
     import random
     import numpy as np
 
@@ -26,6 +31,12 @@ class ExponentialMovingAverage:
     """Maintains an exponential moving average copy of a model."""
 
     def __init__(self, model: torch.nn.Module, decay: float) -> None:
+        """Initialise the EMA helper.
+
+        Args:
+            model: Source model to clone for EMA tracking.
+            decay: Exponential decay factor in ``[0, 1)``.
+        """
         self.decay = decay
         self.ema_model = copy.deepcopy(model)
         for param in self.ema_model.parameters():
@@ -33,6 +44,11 @@ class ExponentialMovingAverage:
 
     @torch.no_grad()
     def update(self, model: torch.nn.Module) -> None:
+        """Blend ``model`` parameters into the EMA copy in-place.
+
+        Args:
+            model: Source model whose parameters should be tracked.
+        """
         ema_state = dict(self.ema_model.named_parameters())
         model_state = dict(model.named_parameters())
         for name, param in model_state.items():
@@ -47,14 +63,36 @@ class ExponentialMovingAverage:
                 ema_buffers[name].copy_(buffer)
 
     def state_dict(self):
+        """Expose the EMA model state for checkpointing compatibility.
+
+        Returns:
+            State dictionary mirroring :meth:`torch.nn.Module.state_dict`.
+        """
         return self.ema_model.state_dict()
 
     def to(self, device: torch.device | str) -> "ExponentialMovingAverage":
+        """Move the internal EMA copy to ``device`` and return ``self``.
+
+        Args:
+            device: Target device.
+
+        Returns:
+            ``self`` for fluent chaining.
+        """
         self.ema_model.to(device)
         return self
 
 
 def mse(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """Return the standard mean squared error between ``pred`` and ``target``.
+
+    Args:
+        pred: Predicted tensor.
+        target: Ground-truth tensor of matching shape.
+
+    Returns:
+        Scalar tensor containing the MSE value.
+    """
     return torch.mean((pred - target) ** 2)
 
 
@@ -69,7 +107,18 @@ def visualize_trajectories(
     axes_radius: float,
     visualize_indefinitely: bool = False,
 ) -> None:
-    """Launch a viser viewer comparing ground-truth and predicted trajectories."""
+    """Launch a viser viewer comparing ground-truth and predicted trajectories.
+
+    Args:
+        point_cloud: Observation tensor with shape ``(T, N, C)`` including points
+            (and optionally colours).
+        gt_actions: Ground-truth action trajectory.
+        pred_actions: Predicted action trajectory.
+        point_size: Rendering size for individual points.
+        axes_length: Length of pose axes in the viewer.
+        axes_radius: Radius of pose axes cylinders.
+        visualize_indefinitely: Keep the viewer open until interrupted when ``True``.
+    """
 
     try:
         import viser
@@ -144,7 +193,15 @@ def log_pointcloud_wandb(
     pred_actions: torch.Tensor,
     tag: str,
 ) -> None:
-    """Log a combined point-cloud plus action targets to wandb."""
+    """Log a combined point-cloud plus action targets to wandb.
+
+    Args:
+        wandb_run: Active Weights & Biases run or ``None`` to skip logging.
+        point_cloud: Observed point cloud tensor of shape ``(T, N, C)``.
+        gt_actions: Optional ground-truth actions.
+        pred_actions: Predicted actions to visualise.
+        tag: Prefix used when naming the logged artifact.
+    """
 
     if wandb_run is None:
         return

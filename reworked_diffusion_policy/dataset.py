@@ -16,6 +16,14 @@ from .normalization import LinearNormalizer, SingleFieldLinearNormalizer
 
 
 def ensure_float_colors(array: np.ndarray) -> np.ndarray:
+    """Convert an RGB array to ``float32`` in ``[0, 1]`` range.
+
+    Args:
+        array: RGB values as ``uint8`` or floating-point tensor.
+
+    Returns:
+        Normalised ``float32`` array with values in ``[0, 1]``.
+    """
     if array.dtype == np.uint8:
         return array.astype(np.float32) / 255.0
     array = array.astype(np.float32)
@@ -26,6 +34,8 @@ def ensure_float_colors(array: np.ndarray) -> np.ndarray:
 
 @dataclass
 class DatasetConfig:
+    """Settings for loading RLBench temporal datasets."""
+
     path: str
     sample_points: int
     n_obs_steps: int
@@ -38,6 +48,12 @@ class RLBenchTemporalH5Dataset(Dataset):
     """Dataset that eagerly loads the entire cache into memory."""
 
     def __init__(self, cfg: DatasetConfig) -> None:
+        """Load every sample from the HDF5 caches into memory.
+
+        Args:
+            cfg: Dataset configuration describing the dataset root, point cloud
+                sampling strategy and horizon parameters.
+        """
         super().__init__()
         self.cfg = cfg
         self.path = Path(cfg.path).expanduser().resolve()
@@ -62,9 +78,22 @@ class RLBenchTemporalH5Dataset(Dataset):
         self._normalizer = self._build_normalizer()
 
     def __len__(self) -> int:  # type: ignore[override]
+        """Return the number of cached samples.
+
+        Returns:
+            Number of samples loaded into memory.
+        """
         return len(self._data)
 
     def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:  # type: ignore[override]
+        """Return a deep copy of the sample at ``index`` for safe mutation.
+
+        Args:
+            index: Dataset index in ``[0, len(self))``.
+
+        Returns:
+            Mapping containing ``point_clouds``, ``agent_pos`` and ``action``.
+        """
         if index < 0 or index >= len(self._data):
             raise IndexError(index)
         sample = self._data[index]
@@ -76,6 +105,14 @@ class RLBenchTemporalH5Dataset(Dataset):
 
     # ------------------------------------------------------------------
     def _process_sample(self, sample_grp: h5py.Group) -> Dict[str, torch.Tensor]:
+        """Convert a single HDF5 sample group into tensors.
+
+        Args:
+            sample_grp: HDF5 group representing a single dataset sample.
+
+        Returns:
+            Dictionary containing processed tensors for the sample.
+        """
         obs_grp = sample_grp["observation"]
         pc_sequence = obs_grp["point_cloud_sequence"]
         proprio_sequence = torch.from_numpy(obs_grp["proprio_sequence"][()].astype(np.float32))
@@ -142,6 +179,11 @@ class RLBenchTemporalH5Dataset(Dataset):
 
     # ------------------------------------------------------------------
     def _resolve_source_files(self) -> List[Path]:
+        """Materialise the list of HDF5 files that should be loaded.
+
+        Returns:
+            List of absolute :class:`Path` instances pointing to cache files.
+        """
         if self.path.is_file():
             return [self.path]
         if not self.path.exists():
@@ -165,11 +207,22 @@ class RLBenchTemporalH5Dataset(Dataset):
         return resolved
 
     def _update_stats(self, sample: Dict[str, torch.Tensor]) -> None:
+        """Accumulate per-feature statistics used for normalisation.
+
+        Args:
+            sample: Sample dictionary produced by :meth:`_process_sample`.
+        """
         self._accumulate("point_clouds", sample["point_clouds"])
         self._accumulate("agent_pos", sample["agent_pos"])
         self._accumulate("action", sample["action"])
 
     def _accumulate(self, key: str, tensor: torch.Tensor) -> None:
+        """Update running min/mean/max statistics for ``tensor``.
+
+        Args:
+            key: Field name whose statistics are being tracked.
+            tensor: Tensor containing the values to accumulate.
+        """
         feature_dim = tensor.shape[-1]
         flat = tensor.reshape(-1, feature_dim).to(torch.float64)
         if key not in self._stats:
@@ -190,6 +243,11 @@ class RLBenchTemporalH5Dataset(Dataset):
         stats["max"] = torch.maximum(stats["max"], flat.max(dim=0).values)
 
     def _build_normalizer(self) -> LinearNormalizer:
+        """Create a normalizer that maps features to approximately ``[-1, 1]``.
+
+        Returns:
+            :class:`LinearNormalizer` built from accumulated statistics.
+        """
         output_min = -1.0
         output_max = 1.0
         range_eps = 1e-4
@@ -236,17 +294,40 @@ class RLBenchTemporalH5Dataset(Dataset):
 
     @property
     def normalizer(self) -> LinearNormalizer:
+        """Return the per-field linear normaliser built from the dataset.
+
+        Returns:
+            Linear normaliser covering ``point_clouds``, ``agent_pos`` and ``action``.
+        """
         return self._normalizer
 
     @property
     def source_files(self) -> Tuple[Path, ...]:
+        """Return the fully-resolved sequence of source cache files.
+
+        Returns:
+            Tuple of absolute :class:`Path` objects.
+        """
         return tuple(self._source_files)
 
     @property
     def task_names(self) -> Tuple[str, ...]:
+        """Return the task names requested for this dataset.
+
+        Returns:
+            Tuple of task name strings.
+        """
         return tuple(self._task_names)
 
     def _format_action(self, action_seq: torch.Tensor) -> torch.Tensor:
+        """Clamp or pad an action sequence to the configured horizon.
+
+        Args:
+            action_seq: Raw action sequence tensor ``(T, D)`` from the dataset.
+
+        Returns:
+            Tensor containing exactly ``action_horizon`` steps.
+        """
         horizon = self.cfg.action_horizon
         steps = action_seq.shape[0]
         if steps > horizon:
@@ -265,6 +346,16 @@ def sample_points(
     colors: Optional[torch.Tensor],
     target_points: int,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    """Sample or repeat points (and colours) to reach ``target_points`` size.
+
+    Args:
+        points: Point coordinates with shape ``(N, D)``.
+        colors: Optional colour values aligned with ``points``.
+        target_points: Number of rows desired in the output tensors.
+
+    Returns:
+        Tuple of ``(points, colors)`` truncated or resampled to ``target_points``.
+    """
     total = points.shape[0]
     if total >= target_points:
         indices = torch.randperm(total)[:target_points]
@@ -284,6 +375,14 @@ def sample_points(
 
 
 def collate_temporal_batch(batch: Sequence[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+    """Stack a sequence of samples into a single mini-batch.
+
+    Args:
+        batch: Iterable of dataset samples.
+
+    Returns:
+        Dictionary with stacked ``point_clouds``, ``agent_pos`` and ``action`` tensors.
+    """
     point_clouds = torch.stack([item["point_clouds"] for item in batch], dim=0)
     agent_pos = torch.stack([item["agent_pos"] for item in batch], dim=0)
     actions = torch.stack([item["action"] for item in batch], dim=0)

@@ -18,6 +18,8 @@ from ..normalization import LinearNormalizer
 
 @dataclass
 class DiffusionPolicyConfig:
+    """Configuration bundle describing the diffusion policy components."""
+
     horizon: int
     n_obs_steps: int
     action_dim: int
@@ -37,7 +39,14 @@ class DiffusionPolicyConfig:
 
 
 class DiffusionPolicy(nn.Module):
+    """Diffusion policy combining a PointNet encoder with a conditional UNet."""
+
     def __init__(self, cfg: DiffusionPolicyConfig) -> None:
+        """Construct the policy and its diffusion scheduler from ``cfg``.
+
+        Args:
+            cfg: Dataclass describing architecture and scheduler hyper-parameters.
+        """
         super().__init__()
         self.cfg = cfg
 
@@ -82,15 +91,37 @@ class DiffusionPolicy(nn.Module):
 
     # ------------------------------------------------------------------
     def encode_observation(self, point_clouds: torch.Tensor, agent_pos: torch.Tensor) -> torch.Tensor:
+        """Encode stacked observations into a global conditioning vector.
+
+        Args:
+            point_clouds: Tensor of shape ``(B, To, N, C)`` with per-frame point clouds.
+            agent_pos: Tensor of shape ``(B, To, D)`` containing agent states.
+
+        Returns:
+            Encoded tensor with shape ``(B, To * F)`` used to condition the UNet.
+        """
         return self.encoder(point_clouds, agent_pos)
 
     def set_normalizer(self, normalizer: LinearNormalizer) -> None:
+        """Attach a frozen normaliser used for both training and sampling.
+
+        Args:
+            normalizer: Linear normaliser built from the dataset statistics.
+        """
         self.normalizer = copy.deepcopy(normalizer)
         for param in self.normalizer.parameters():
             param.requires_grad_(False)
         self._normalizer_ready = True
 
     def compute_loss(self, batch: Dict[str, torch.Tensor]) -> tuple[torch.Tensor, Dict[str, float]]:
+        """Compute the training objective and scalar metrics for ``batch``.
+
+        Args:
+            batch: Mini-batch dictionary with ``point_clouds``, ``agent_pos`` and ``action``.
+
+        Returns:
+            Tuple ``(loss, metrics)`` with the scalar loss tensor and logging dict.
+        """
         if not self._normalizer_ready:
             raise RuntimeError("Normalizer must be set before training")
 
@@ -125,6 +156,15 @@ class DiffusionPolicy(nn.Module):
 
     @torch.no_grad()
     def sample(self, point_clouds: torch.Tensor, agent_pos: torch.Tensor) -> torch.Tensor:
+        """Generate denoised action trajectories conditioned on observations.
+
+        Args:
+            point_clouds: Tensor with stacked observations ``(B, To, N, C)``.
+            agent_pos: Tensor with agent states ``(B, To, D)``.
+
+        Returns:
+            Sampled action trajectories with shape ``(B, horizon, action_dim)``.
+        """
         if not self._normalizer_ready:
             raise RuntimeError("Normalizer must be set before sampling")
 
@@ -154,6 +194,15 @@ class DiffusionPolicy(nn.Module):
         return self.normalizer["action"].unnormalize(trajectory)
 
     def load_state_dict(self, state_dict, strict: bool = True):  # type: ignore[override]
+        """Restore the module while gracefully handling missing normaliser weights.
+
+        Args:
+            state_dict: State dictionary produced by :meth:`state_dict`.
+            strict: Whether to raise on unexpected or missing keys.
+
+        Returns:
+            ``_IncompatibleKeys`` tuple describing missing/unexpected keys.
+        """
         has_normalizer = any(key.startswith("normalizer.params_dict") for key in state_dict.keys())
 
         restored_normalizer = None

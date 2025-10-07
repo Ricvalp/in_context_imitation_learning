@@ -29,15 +29,26 @@ class CheckpointManager:
         self._topk_entries: List[Dict[str, object]] = []
 
     def latest_path(self) -> Path:
+        """Return the path used for the most recent checkpoint.
+
+        Returns:
+            Absolute path to the ``latest`` checkpoint file.
+        """
         return self.directory / f"{self._base_prefix}_latest.pt"
 
     @property
     def _base_prefix(self) -> str:
+        """Base filename prefix that optionally includes the run id."""
         if self.run_id:
             return f"{self.prefix}_{self.run_id}"
         return self.prefix
 
     def set_run_id(self, run_id: str) -> None:
+        """Update the run identifier used in filenames.
+
+        Args:
+            run_id: Unique identifier appended to checkpoint filenames.
+        """
         self.run_id = run_id
 
     def save(
@@ -51,7 +62,20 @@ class CheckpointManager:
         metric: Optional[float] = None,
         update_latest: bool = True,
     ) -> Path:
-        """Persist the latest checkpoint to disk."""
+        """Persist the latest checkpoint to disk.
+
+        Args:
+            model: Model whose parameters should be saved.
+            optimizer: Optimiser state to persist alongside the model.
+            epoch: Current epoch index.
+            global_step: Global optimisation step.
+            ema_model: Optional EMA copy to include.
+            metric: Validation metric used for Top-K tracking.
+            update_latest: Skip the ``latest`` symlink/file update when ``False``.
+
+        Returns:
+            Path to the checkpoint file written (``<prefix>_latest.pt``).
+        """
 
         payload = {
             "model": model.state_dict(),
@@ -72,7 +96,15 @@ class CheckpointManager:
         return path
 
     def load(self, path: str | Path, map_location: Optional[str | torch.device] = None) -> dict:
-        """Load a checkpoint payload from disk."""
+        """Load a checkpoint payload from disk.
+
+        Args:
+            path: Checkpoint file to read.
+            map_location: Optional device remapping for tensors.
+
+        Returns:
+            Deserialized checkpoint payload.
+        """
 
         return torch.load(Path(path), map_location=map_location)
 
@@ -85,6 +117,14 @@ class CheckpointManager:
         epoch: int,
         global_step: int,
     ) -> None:
+        """Persist checkpoints for the best ``top_k`` metrics seen so far.
+
+        Args:
+            metric: Metric value produced by the latest evaluation.
+            payload: Checkpoint payload dictionary.
+            epoch: Epoch index associated with the payload.
+            global_step: Global optimisation step for filename generation.
+        """
         entries = self._topk_entries
         if len(entries) >= self.top_k:
             worst_metric = entries[-1]["metric"]  # type: ignore[index]
@@ -119,6 +159,11 @@ class CheckpointManager:
 
 
 def _safe_unlink(path: Path) -> None:
+    """Remove ``path`` while being resilient to Python version differences.
+
+    Args:
+        path: File path to delete.
+    """
     try:
         path.unlink(missing_ok=True)  # type: ignore[arg-type]
     except TypeError:
