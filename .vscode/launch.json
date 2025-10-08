@@ -48,6 +48,36 @@
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug QM9 Regression",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/platonic_transformer/main_qm9_regr.py",
+            "args": [
+                "--log",
+                "False"
+            ],
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug QM9 Generation",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/platonic_transformer/main_qm9_gen.py",
+            "args": [
+                "--log",
+                "False"
+            ],
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal"
         }
     ]
 }

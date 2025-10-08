@@ -7,7 +7,9 @@ from .block import PlatonicBlock
 from .groups import PLATONIC_GROUPS
 from .linear import PlatonicLinear
 from .io import to_dense_and_mask, pool, lift, to_scalars_vectors
-from .ape import APE
+from .ape import PlatonicAPE as APE
+
+from .gen_utils import TimestepEmbedder, LabelEmbedder
 
 
 class PlatonicTransformer(nn.Module):
@@ -33,37 +35,48 @@ class PlatonicTransformer(nn.Module):
         scalar_task_level (str): "node" or "graph". Determines the pooling strategy.
         dropout (float): Dropout rate.
         norm_first (bool): If True, use pre-normalization in the blocks.
+        drop_path_rate (float): Stochastic depth rate. Default: 0.0.
+        layer_scale_init_value (Optional[float]): Initial value for LayerScale. Default: None.
+        conditioning_dim (Optional[int]): Size of the diffusion-style conditioning vector passed to each
+            PlatonicBlock. If provided, blocks use AdaLayerNorm-style modulation and gating.
+        conditioning_mlp_dim (Optional[int]): Hidden dimension for an internal MLP that processes the
+            conditioning signal before modulation. If None, conditioning is used as-is.
         **kwargs: Additional keyword arguments for the PlatonicBlock layers
     """
     def __init__(self,
-                 # Basic/essential specification:
-                 input_dim: int,
-                 input_dim_vec: int,
-                 hidden_dim: int,
-                 output_dim: int,
-                 output_dim_vec: int,
-                 nhead: int,
-                 num_layers: int,
-                 solid_name: str,
-                 spatial_dim: int = 3,
-                 dense_mode: bool = False, # force dense mode, even if batch is provided
-                 # Pooling and readout specification:
-                 scalar_task_level: str = "graph",
-                 vector_task_level: str = "node",
-                 post_pool_readout: bool = True,
-                 ffn_readout: bool = True,
-                 # Attention block specification:
-                 mean_aggregation: bool = False,
-                 dropout: float = 0.1,
-                 norm_first: bool = True,
-                 attention: bool = False,
-                 attention_type: str = 'equivariant',
-                 ffn_dim_factor: int = 4,
-                 # RoPE and APE specification:
-                 rope_sigma: float = 1.0,  # if None it is not used
-                 ape_sigma: float = None,  # if None it is not used
-                 learned_freqs: bool = True,
-                 **kwargs):
+        # Basic/essential specification:
+        input_dim: int,
+        input_dim_vec: int,
+        hidden_dim: int,
+        output_dim: int,
+        output_dim_vec: int,
+        nhead: int,
+        num_layers: int,
+        solid_name: str,
+        spatial_dim: int = 3,
+        dense_mode: bool = False, # force dense mode, even if batch is provided
+        # Pooling and readout specification:
+        scalar_task_level: str = "graph",
+        vector_task_level: str = "node",
+        ffn_readout: bool = True,
+        # Attention block specification:
+        mean_aggregation: bool = False,
+        dropout: float = 0.1,
+        norm_first: bool = True,
+        drop_path_rate: float = 0.0,
+        layer_scale_init_value: Optional[float] = None,
+        attention: bool = False,
+        ffn_dim_factor: int = 4,
+        # RoPE and APE specification:
+        rope_sigma: float = 1.0,  # if None it is not used
+        ape_sigma: float = None,  # if None it is not used
+        learned_freqs: bool = True,
+        freq_init: str = 'random',
+        use_key: bool = False,
+        # Conditioning specification:
+        time_conditioning: bool = False,
+        class_conditioning: bool = False,
+    ):
         super().__init__()
 
         if scalar_task_level not in ["node", "graph"]:
@@ -82,11 +95,19 @@ class PlatonicTransformer(nn.Module):
         self.output_dim = output_dim
         self.output_dim_vec = output_dim_vec
         self.mean_aggregation = mean_aggregation
-        self.post_pool_readout = post_pool_readout
+
+        # Conditioning setup
+        self.time_conditioning = time_conditioning
+        self.class_conditioning = class_conditioning
+
+        if time_conditioning:
+            self.time_embedder = TimestepEmbedder(hidden_size=hidden_dim)
+        if class_conditioning:
+            self.label_embedder = LabelEmbedder(output_dim, hidden_size=hidden_dim, dropout_prob=drop_path_rate)
 
         # Global position embedding for fixed patching ViTs
         if ape_sigma is not None:
-            self.ape = APE(hidden_dim, ape_sigma, spatial_dim, learned_freqs)
+            self.ape = APE(hidden_dim, solid_name, ape_sigma, spatial_dim, learned_freqs)
         else:
             self.register_buffer('ape', None)
                
@@ -99,26 +120,8 @@ class PlatonicTransformer(nn.Module):
         # The blocks operate on the total flattened dimension (G * C).
         dim_feedforward = int(self.hidden_dim * ffn_dim_factor)
 
-        allowed_attention_types = [
-            'equivariant', 'invariant',                         
-            'equivariant-invariant', 'invariant-equivariant',   
-            'equivariant-equivariant', 'invariant-invariant'    # Redundant but for consistent format
-        ]
-
-        if attention_type not in allowed_attention_types:
-            raise ValueError(f"Invalid attention_type: {attention_type}. Must be one of {allowed_attention_types}.")
-
-        if '-' in attention_type:
-            first_layer_attn, rest_layers_attn = attention_type.split('-', 1)
-        else:
-            first_layer_attn = rest_layers_attn = attention_type
-
-        # Create the layers with appropriate attention types
         self.layers = nn.ModuleList()
-        for i in range(num_layers):
-            # Use first_layer_attn for the first layer, rest_layers_attn for all other layers
-            current_attn_type = first_layer_attn if i == 0 else rest_layers_attn
-            
+        for _ in range(num_layers):
             self.layers.append(PlatonicBlock(
                 d_model=self.hidden_dim,
                 nhead=nhead,
@@ -126,16 +129,17 @@ class PlatonicTransformer(nn.Module):
                 solid_name=solid_name,
                 dropout=dropout,
                 norm_first=norm_first,
+                drop_path=drop_path_rate,
+                layer_scale_init_value=layer_scale_init_value,
                 freq_sigma=rope_sigma,
+                freq_init=freq_init,
                 learned_freqs=learned_freqs,
                 spatial_dims=spatial_dim,
                 mean_aggregation=mean_aggregation,
                 attention=attention,
-                attention_type=current_attn_type,
-                **kwargs
+                use_key=use_key,
             ))
             
-
         if ffn_readout:
             self.scalar_readout = nn.Sequential(
                 PlatonicLinear(self.hidden_dim, self.hidden_dim, solid_name),
@@ -154,7 +158,15 @@ class PlatonicTransformer(nn.Module):
             self.scalar_readout = PlatonicLinear(self.hidden_dim, self.num_G * output_dim, solid_name)
             self.vector_readout = PlatonicLinear(self.hidden_dim, self.num_G * output_dim_vec * spatial_dim, solid_name)
 
-    def forward(self, x: Tensor, pos: Tensor, batch: Optional[torch.Tensor] = None, mask: Optional[Tensor] = None, vec: Optional[Tensor] = None, avg_num_nodes = 1.0) -> Tensor:
+    def forward(self,
+                x: Tensor,
+                pos: Tensor,
+                batch: Optional[torch.Tensor] = None,
+                mask: Optional[Tensor] = None,
+                vec: Optional[Tensor] = None,
+                time_conditioning: Optional[Tensor] = None,
+                class_conditioning: Optional[Tensor] = None,
+                avg_num_nodes: float = 1.0) -> Tensor:
         """
         Forward pass for the Platonic Transformer.
 
@@ -163,6 +175,8 @@ class PlatonicTransformer(nn.Module):
             pos (Tensor): Node positions of shape (N, spatial_dims).
             batch (Tensor): Batch index for each node of shape (N,).
             mask (Tensor, optional): Attention mask of shape (B, N) or (N, N) for dense inputs.
+            conditioning (Tensor, optional): Diffusion-style conditioning embeddings of shape
+                (B, conditioning_dim), where B is the batch size / number of graphs.
 
         Returns:
             Tensor: Final predictions. Shape is (B, output_dim) for graph tasks
@@ -183,46 +197,51 @@ class PlatonicTransformer(nn.Module):
         x = self.x_embedder(x)  # [..., N, num_patches * C]
         x = x + self.ape(pos) if self.ape is not None else x  # Add absolute position embedding
 
-        # 3. Equivariant Encoder (Platonic Conv Blocks)
-        for layer in self.layers:
-            x = layer(x=x, pos=pos, batch=batch, mask=mask, avg_num_nodes=avg_num_nodes)
+        # 3. Embed conditioning vector
+        t_embed = c_embed = None
+        if self.time_conditioning and time_conditioning is not None:
+            t_embed = self.time_embedder(time_conditioning)
+        if self.class_conditioning and class_conditioning is not None:
+            c_embed = self.label_embedder(class_conditioning)
 
-        # 4. Pre-pooling readout
-        if not self.post_pool_readout:
-            scalar_x = self.scalar_readout(x)
-            vector_x = self.vector_readout(x)
-
-            if self.scalar_task_level == "graph":
-                scalar_x = pool(scalar_x, batch, mask, avg_num_nodes, self.dense_mode, self.mean_aggregation)    
-            else:
-                if not self._input_was_dense_format and self.dense_mode:
-                    scalar_x = scalar_x[mask]
-
-            if self.vector_task_level == "graph":
-                vector_x = pool(vector_x, batch, mask, avg_num_nodes, self.dense_mode, self.mean_aggregation)
-            else:
-                if not self._input_was_dense_format and self.dense_mode:
-                    vector_x = vector_x[mask]
+        # 4. Merge conditioning vectors if necessary
+        if t_embed is not None and c_embed is not None:
+            conditioning = t_embed + c_embed
+        elif t_embed is not None:
+            conditioning = t_embed
         else:
-            
-            if self.scalar_task_level == "graph" :
-                scalar_x = pool(x, batch, mask, avg_num_nodes, self.dense_mode, self.mean_aggregation)
-            else:
-                if not self._input_was_dense_format and self.dense_mode:
-                    scalar_x = x[mask]
-                else:
-                    scalar_x = x
+            conditioning = None
 
-            if self.vector_task_level == "graph":
-                vector_x = pool(x, batch, mask, avg_num_nodes, self.dense_mode, self.mean_aggregation)
-            else:
-                if not self._input_was_dense_format and self.dense_mode:
-                    vector_x = x[mask]
-                else:
-                    vector_x = x
+        # 5. Equivariant Encoder (Platonic Conv Blocks)
+        for layer in self.layers:
+            x = layer(
+                x=x,
+                pos=pos,
+                batch=batch,
+                mask=mask,
+                conditioning=conditioning,
+                avg_num_nodes=avg_num_nodes
+            )
 
-            scalar_x = self.scalar_readout(scalar_x)
-            vector_x = self.vector_readout(vector_x)
+        # 6. Post-pooling readout
+        if self.scalar_task_level == "graph":
+            scalar_x = pool(x, batch, mask, avg_num_nodes, self.dense_mode, self.mean_aggregation)
+        else:
+            if not self._input_was_dense_format and self.dense_mode:
+                scalar_x = x[mask]
+            else:
+                scalar_x = x
+
+        if self.vector_task_level == "graph":
+            vector_x = pool(x, batch, mask, avg_num_nodes, self.dense_mode, self.mean_aggregation)
+        else:
+            if not self._input_was_dense_format and self.dense_mode:
+                vector_x = x[mask]
+            else:
+                vector_x = x
+
+        scalar_x = self.scalar_readout(scalar_x)
+        vector_x = self.vector_readout(vector_x)
 
         # 7. Extract the scalar and vector parts
         scalars = to_scalars_vectors(scalar_x, self.output_dim, 0, self.group)[0]

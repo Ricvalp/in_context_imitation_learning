@@ -18,7 +18,6 @@ from .utils import scatter_add
 from .rope import PlatonicRoPE
 from .linear import PlatonicLinear
 from .groups import PLATONIC_GROUPS
-from .addrope import AddRoPE
 
 
 class PlatonicConv(nn.Module):
@@ -28,7 +27,7 @@ class PlatonicConv(nn.Module):
     This layer uses Rotary Positional Embeddings (RoPE) to compute a dynamic
     convolution kernel. It supports two modes for dense data:
     1.  attention=False (Default): A highly efficient linear convolutio type "attention" mechanism.
-    2.  attention=True: Standard scaled dot-product attention with softmax.
+    2.  attention=True: Equivariant scaled dot-product attention with softmax.
     
     Graph-structured data only uses the linear attention mechanism.
     The layer is equivariant to the symmetries of a specified Platonic solid.
@@ -42,11 +41,12 @@ class PlatonicConv(nn.Module):
         solid_name: str,
         spatial_dims: int = 3,
         freq_sigma: float = 1.0,
+        freq_init: str = 'random',
         learned_freqs: bool = True,
         bias: bool = True,
         mean_aggregation: bool = False,
         attention: bool = False,
-        attention_type: str = 'equivariant'
+        use_key: bool = False
     ):
         super().__init__()
 
@@ -78,12 +78,12 @@ class PlatonicConv(nn.Module):
 
         self.mean_aggregation = mean_aggregation
         self.attention = attention
-        self.attention_type = attention_type
 
         # --- Sub-modules ---
+        self.use_key = use_key
         self.q_proj = PlatonicLinear(in_channels, embed_dim, solid_name, bias=bias)
         self.v_proj = PlatonicLinear(in_channels, embed_dim, solid_name, bias=bias)
-        if freq_sigma is None:
+        if freq_sigma is None or use_key:
             self.k_proj = PlatonicLinear(in_channels, embed_dim, solid_name, bias=bias)
         else:
             self.register_buffer('k_proj', None)
@@ -98,6 +98,7 @@ class PlatonicConv(nn.Module):
                 spatial_dims=spatial_dims,
                 freq_sigma=freq_sigma,
                 learned_freqs=learned_freqs,
+                freq_init=freq_init
             )
         else:
             self.register_buffer('rope_emb', None)
@@ -112,7 +113,7 @@ class PlatonicConv(nn.Module):
         q_raw = self.q_proj(x)
         v_raw = self.v_proj(x)
         # If not using RoPE, then project, but if using RoPE then use ones
-        k_raw = self.k_proj(x) if self.rope_emb is None else torch.ones_like(q_raw)
+        k_raw = self.k_proj(x) if ((self.rope_emb is None) or self.use_key) else torch.ones_like(q_raw)
 
         # Reshape for multi-head processing: [..., G * H * D_h] -> [..., G, H, D_h]
         q = q_raw.view(*leading_dims, self.num_G, self.effective_num_heads, self.head_dim)
@@ -136,9 +137,9 @@ class PlatonicConv(nn.Module):
         k_knn: int | None = None
     ) -> torch.Tensor:
         """
-        Compute full connected edge if edge_index is None, or kNN edges if k_knn is given.
-        Supports both equivariant and invariant attention modes.
-        
+        Compute fully connected edges if edge_index is None, or kNN edges if k_knn is given.
+        Uses an equivariant attention mechanism over the combined group/head dimension.
+
         Returns
         -------
         out : Tensor, shape [N, G*H*D]
@@ -173,76 +174,35 @@ class PlatonicConv(nn.Module):
 
         E = src.numel()
         
-        if self.attention_type == 'invariant':
-            # Permute to [N, H, G, D] and reshape to [N, H, G*D]
-            q_inv = q.permute(0, 2, 1, 3).reshape(N, H, G * D)
-            k_inv = k.permute(0, 2, 1, 3).reshape(N, H, G * D)
-            v_inv = v.permute(0, 2, 1, 3).reshape(N, H, G * D)
-            
-            q_src = q_inv[src]  # [E, H, G*D]
-            k_dst = k_inv[dst]  # [E, H, G*D]
-            v_dst = v_inv[dst]  # [E, H, G*D]
-            
-            # Integration over h_dim and also G (so invariant)
-            scores = (q_src * k_dst).sum(-1) * ((G * D) ** -0.5)  # [E, H]
-            
-            head_ids = torch.arange(H, device=device).repeat(E, 1)       # [E, H]
-            node_head_ids = src.unsqueeze(1) * H + head_ids              # [E, H]
-            
-            # Apply softmax normalization
-            a = scatter_softmax(
-                scores.flatten(),
-                node_head_ids.flatten(),
-                dim=0,
-                dim_size=N * H
-            ).view(E, H)                                             
-            
-            weighted = (a.unsqueeze(-1) * v_dst)                        # [E, H, G*D]
-            weighted = weighted.reshape(-1, G*D)                        # [E*H, G*D]
-            
-            out = scatter_sum(
-                weighted,
-                node_head_ids.flatten(),
-                dim=0,
-                dim_size=N * H
-            ).view(N, H, G*D)                                          
+        GH = G * H
+        q_src = q.reshape(N, GH, D)[src]  # [E, GH, D]
+        k_dst = k.reshape(N, GH, D)[dst]  # [E, GH, D]
+        v_dst = v.reshape(N, GH, D)[dst]  # [E, GH, D]
 
-            # Reshape (N, H, G*D) -> (N, G, H, D) -> (N, G*H*D)
-            out = out.reshape(N, H, G, D).permute(0, 2, 1, 3).reshape(N, G*H*D)
+        scores = (q_src * k_dst).sum(-1) * D ** -0.5  # [E, GH]
 
-        elif self.attention_type == 'equivariant':
-            
-            GH = G * H  
-            q_src = q.reshape(N, GH, D)[src]  # [E, GH, D]
-            k_dst = k.reshape(N, GH, D)[dst]  # [E, GH, D]
-            v_dst = v.reshape(N, GH, D)[dst]  # [E, GH, D]
+        # reindex ids for heads
+        head_ids = torch.arange(GH, device=device).repeat(E, 1)     # [E, GH]
+        group_ids = src.unsqueeze(1) * GH + head_ids                # [E, GH]
 
-            scores = (q_src * k_dst).sum(-1) * D ** -0.5  # [E, GH]
+        a = scatter_softmax(
+            scores.flatten(),
+            group_ids.flatten(),
+            dim=0,
+            dim_size=N * GH
+        ).view(E, GH)
 
-            # reindex ids for heads
-            head_ids = torch.arange(GH, device=device).repeat(E, 1)     # [E, GH]
-            group_ids = src.unsqueeze(1) * GH + head_ids                # [E, GH]
+        weighted = (a.unsqueeze(-1) * v_dst).reshape(-1, D)         # [E*GH, D]
 
-            a = scatter_softmax(
-                scores.flatten(),
-                group_ids.flatten(),
-                dim=0,
-                dim_size=N * GH
-            ).view(E, GH)                                              
+        out = scatter_sum(
+            weighted,
+            group_ids.flatten(),
+            dim=0,
+            dim_size=N * GH
+        ).view(N, GH, D)
 
-            weighted = (a.unsqueeze(-1) * v_dst).reshape(-1, D)         # [E*GH, D]
-
-            out = scatter_sum(
-                weighted,
-                group_ids.flatten(),
-                dim=0,
-                dim_size=N * GH
-            ).view(N, GH, D)                                            
-
-            # Reshape (N, GH, D) -> (N, G*H*D)
-            out = out.reshape(N, G*H*D)                                
-    
-        return out
+        # Reshape (N, GH, D) -> (N, G*H*D)
+        return out.reshape(N, G * H * D)
         
 
 
@@ -280,22 +240,10 @@ class PlatonicConv(nn.Module):
         B, S, _ = x.shape # B: batch size, S: sequence length
 
         if self.attention:
-            if self.attention_type == 'invariant':
-                # Invariant: Permute to (B, S, H, G, Dh) and merge G and Dh
-                q_perm = q_rope.permute(0, 1, 3, 2, 4).reshape(B, S, self.effective_num_heads, self.num_G * self.head_dim)
-                k_perm = k_rope.permute(0, 1, 3, 2, 4).reshape(B, S, self.effective_num_heads, self.num_G * self.head_dim)
-                v_perm = v.permute(0, 1, 3, 2, 4).reshape(B, S, self.effective_num_heads, self.num_G * self.head_dim)
-                # Reshape for SDPA: (B, S, H, G*Dh) -> (B, H, S, G*Dh)
-                q_sdpa = q_perm.transpose(1, 2)
-                k_sdpa = k_perm.transpose(1, 2)
-                v_sdpa = v_perm.transpose(1, 2)
-            elif self.attention_type == 'equivariant':
-                # Reshape for scaled_dot_product_attention: (B, S, G, H, Dh) -> (B, G*H, S, Dh)
-                q_sdpa = q_rope.view(B, S, self.num_G * self.effective_num_heads, self.head_dim).transpose(1, 2)
-                k_sdpa = k_rope.view(B, S, self.num_G * self.effective_num_heads, self.head_dim).transpose(1, 2)
-                v_sdpa = v.view(B, S, self.num_G * self.effective_num_heads, self.head_dim).transpose(1, 2)
-            else:
-                raise ValueError(f"Unknown attention head type: {self.attention_type}. Should be 'invariant' or 'equivariant'.")
+            # Reshape for scaled_dot_product_attention: (B, S, G, H, Dh) -> (B, G*H, S, Dh)
+            q_sdpa = q_rope.view(B, S, self.num_G * self.effective_num_heads, self.head_dim).transpose(1, 2)
+            k_sdpa = k_rope.view(B, S, self.num_G * self.effective_num_heads, self.head_dim).transpose(1, 2)
+            v_sdpa = v.view(B, S, self.num_G * self.effective_num_heads, self.head_dim).transpose(1, 2)
 
             attn_mask = mask[:, None, None, :] if mask is not None else None
             with sdpa_kernel([SDPBackend.FLASH_ATTENTION, SDPBackend.MATH, SDPBackend.EFFICIENT_ATTENTION]):      
@@ -339,4 +287,3 @@ class PlatonicConv(nn.Module):
             return self._forward_graph(x, pos, batch, avg_num_nodes=avg_num_nodes)
         else:
             return self._forward_dense(x, pos, mask, avg_num_nodes=avg_num_nodes)
-

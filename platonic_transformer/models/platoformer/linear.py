@@ -43,8 +43,6 @@ class PlatonicLinear(nn.Module):
 
         self.reset_parameters()
 
-        self.linear = nn.Linear(self.in_channels, self.out_channels, bias=bias)
-
     def reset_parameters(self) -> None:
         """
         Initialize the kernel and bias with variance-preserving scaling.

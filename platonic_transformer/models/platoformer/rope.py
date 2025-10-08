@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import math
 from torch import Tensor
 # This assumes the PLATONIC_GROUPS dictionary from the previous problem is available.
 # You might need to adjust the import path based on your project structure.
@@ -38,6 +39,7 @@ class PlatonicRoPE(nn.Module):
         spatial_dims: int = 3,
         freq_sigma: float = 1.0,
         learned_freqs: bool = False,
+        freq_init: str = 'spiral',
     ):
         super().__init__()
 
@@ -62,10 +64,20 @@ class PlatonicRoPE(nn.Module):
             raise ValueError(f"head_dim ({self.head_dim}) must be divisible by 2 for RoPE.")
         self.num_pairs = self.head_dim // 2
         self.spatial_dims = spatial_dims
+        self.freq_init = freq_init
+        self.freq_sigma = freq_sigma
 
         # --- Frequency Initialization ---
         # Frequencies are defined per *base* head. The group action is applied to positions.
-        freqs = torch.randn(self.num_heads, self.num_pairs, self.spatial_dims) * freq_sigma
+        # freqs = torch.randn(self.num_heads, self.num_pairs, self.spatial_dims) * freq_sigma
+        if self.freq_init == 'random':
+            freqs = self._create_random_frequencies()
+        elif self.freq_init == 'spiral':
+            freqs = self._create_spiral_frequencies()
+        else:
+            raise ValueError(f"Unknown frequency initialization method: '{self.freq_init}'")
+
+
         if learned_freqs:
             self.register_parameter("freqs", nn.Parameter(freqs))
         else:
@@ -118,3 +130,89 @@ class PlatonicRoPE(nn.Module):
         x_out = x_rotated_pairs.view(*leading_dims, self.num_G, self.num_heads, self.head_dim)
         
         return x_out
+
+    def _create_random_frequencies(self) -> Tensor:
+        return torch.randn(self.num_heads, self.num_pairs, self.spatial_dims) * self.freq_sigma
+    
+    def _create_spiral_frequencies(self) -> Tensor:
+        if self.spatial_dims == 2:
+            return self._create_spiral_frequencies_2d()
+        elif self.spatial_dims == 3:
+            return self._create_spiral_frequencies_3d()
+        else:
+            raise ValueError("Spiral method currently only supports spatial_dims=2 or 3")
+    
+    def _create_spiral_frequencies_3d(self) -> Tensor:
+        if self.spatial_dims != 3:
+            raise ValueError("Spiral method currently only supports spatial_dims=3")
+
+        # 1. Define base indices and magnitudes for the pairs (F dimension)
+        indices = torch.arange(0, self.num_pairs, dtype=torch.float32) + 0.5
+        magnitudes = torch.linspace(
+            self.freq_sigma / self.num_pairs, self.freq_sigma, self.num_pairs
+        )
+        
+        # 2. Create deterministic phase offsets for each head (H dimension)
+        # Shape: [num_heads, 1] for broadcasting
+        head_phases = torch.linspace(0, 2 * math.pi, self.num_heads + 1)[:-1].unsqueeze(1)
+
+        # 3. Calculate spiral coordinates using broadcasting
+        phi = (1 + math.sqrt(5)) / 2
+        
+        # y and radius are the same for all heads, but need to be broadcastable
+        # Shape: [1, num_pairs]
+        y = (1 - 2 * indices / self.num_pairs).unsqueeze(0)
+        radius = torch.sqrt(1 - y**2)
+
+        # Theta now includes the per-head phase offset
+        # base_theta [1, num_pairs] + head_phases [num_heads, 1] -> theta [num_heads, num_pairs]
+        base_theta = (2 * math.pi * indices / phi).unsqueeze(0)
+        theta = base_theta + head_phases
+        
+        # Calculate x and z for each head's spiral
+        # Shape: [num_heads, num_pairs]
+        x = radius * torch.cos(theta)
+        z = radius * torch.sin(theta)
+        
+        # Expand y to match the head dimension
+        # Shape: [num_heads, num_pairs]
+        y_expanded = y.expand(self.num_heads, -1)
+        
+        # 4. Stack and combine with magnitudes
+        # directions shape: [num_heads, num_pairs, 3]
+        directions = torch.stack([x, y_expanded, z], dim=-1)
+        
+        # magnitudes shape: [1, num_pairs, 1] for broadcasting
+        final_freqs = directions * magnitudes.view(1, -1, 1)
+
+        # Final shape is exactly what we need: (num_heads, num_pairs, spatial_dims)
+        return final_freqs
+
+    def _create_spiral_frequencies_2d(self) -> Tensor:
+            """Generates 2D frequency vectors using a golden angle spiral."""
+            indices = torch.arange(0, self.num_pairs, dtype=torch.float32)
+            
+            # Per-head phase offsets
+            head_phases = torch.linspace(0, 2 * math.pi, self.num_heads + 1)[:-1].unsqueeze(1)
+            
+            # Golden angle for uniform angular distribution
+            golden_angle = math.pi * (3. - math.sqrt(5.))
+            
+            # Base theta and radius
+            # Radius scales with sqrt(index) for uniform area coverage
+            base_theta = (indices * golden_angle).unsqueeze(0)
+            normalized_indices = (indices + 1) / self.num_pairs # Normalize to 1, zero freq not included
+            radius = torch.sqrt(normalized_indices).unsqueeze(0) * self.freq_sigma
+                                                    
+            # Add head phases for per-head variation
+            theta = base_theta + head_phases
+            
+            # Convert from polar to Cartesian coordinates
+            x = radius * torch.cos(theta)
+            y = radius * torch.sin(theta)
+            
+            # Stack and scale by max_freq
+            # Shape: [num_heads, num_pairs, 2]
+            freq_vectors = torch.stack([x, y], dim=-1)
+            
+            return freq_vectors

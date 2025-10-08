@@ -15,7 +15,7 @@ from models.platoformer.groups import PLATONIC_GROUPS
 from utils import CosineWarmupScheduler, RandomSOd, TimerCallback, StopOnPersistentDivergence
 from pytorch_lightning.callbacks import Timer
 
-from platonic_transformer.utils import scatter_add
+from models.platoformer.utils import scatter_add
 
 # Performance optimizations
 torch.set_float32_matmul_precision('high')
