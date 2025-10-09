@@ -42,6 +42,7 @@ class DatasetConfig:
     action_horizon: int
     use_point_colors: bool = True
     task_names: Sequence[str] | None = None
+    max_samples_per_file: Optional[int] = None
 
 
 class RLBenchTemporalH5Dataset(Dataset):
@@ -66,7 +67,9 @@ class RLBenchTemporalH5Dataset(Dataset):
             with h5py.File(file_path, "r") as handle:
                 length = int(handle.attrs["length"])
                 samples = handle["samples"]
-                for index in tqdm(range(length), desc=f"Loading {file_path.name}"):
+                max_samples = self.cfg.max_samples_per_file
+                num_to_load = length if max_samples is None else min(length, max_samples)
+                for index in tqdm(range(num_to_load), desc=f"Loading {file_path.name}"):
                     sample_grp = samples[str(index)]
                     sample = self._process_sample(sample_grp)
                     self._data.append(sample)
