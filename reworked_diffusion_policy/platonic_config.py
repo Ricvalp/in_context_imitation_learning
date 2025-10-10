@@ -25,6 +25,8 @@ def get_config() -> ConfigDict:
     cfg.agent_dim = 8
     cfg.sample_points = 4096
     cfg.use_point_colors = True
+    cfg.dataset_mode = "dense"  # options: "dense", "sparse"
+    cfg.sparse_max_points_per_frame = None
 
     # Model ----------------------------------------------------------------
     cfg.model = ConfigDict()
@@ -48,6 +50,7 @@ def get_config() -> ConfigDict:
     cfg.model.transformer.ffn_readout = True
     cfg.model.transformer.norm_first = True
     cfg.model.transformer.layer_scale_init_value = 1e-3
+    cfg.model.transformer.dense_mode = True
     cfg.model.transformer.use_cls_token = False
 
     cfg.model.state_mlp_dims = (128, 256)
