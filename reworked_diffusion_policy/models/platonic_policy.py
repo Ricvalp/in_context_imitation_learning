@@ -50,51 +50,115 @@ class PlatonicObservationEncoder(nn.Module):
         self.n_obs_steps = n_obs_steps
         self.scalar_feature_dim = scalar_feature_dim
 
-    def forward(self, point_clouds: torch.Tensor, agent_pos: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        point_clouds: torch.Tensor,
+        agent_pos: torch.Tensor,
+        *,
+        point_sample_idx: Optional[torch.Tensor] = None,
+        point_obs_idx: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Encode stacked observations of point clouds and agent state."""
-        b, tobs, npts, feat = point_clouds.shape
-        if tobs != self.n_obs_steps:
-            raise ValueError(f"Expected {self.n_obs_steps} observation steps, received {tobs}")
-        if feat < 3:
-            raise ValueError("Point clouds must contain xyz coordinates in the first three channels")
-
-        pos = point_clouds[..., :3]
-        if self.scalar_feature_dim > 0:
-            scalars = point_clouds[..., 3 : 3 + self.scalar_feature_dim]
-            if scalars.shape[-1] != self.scalar_feature_dim:
+        if self.transformer.dense_mode:
+            if point_clouds.ndim != 4:
                 raise ValueError(
-                    f"Expected {self.scalar_feature_dim} scalar point features, received {scalars.shape[-1]}"
+                    "Dense mode expects point_clouds shaped (B, To, N, C); "
+                    f"received tensor with shape {tuple(point_clouds.shape)}"
                 )
+            b, tobs, npts, feat = point_clouds.shape
+            if tobs != self.n_obs_steps:
+                raise ValueError(f"Expected {self.n_obs_steps} observation steps, received {tobs}")
+            if feat < 3:
+                raise ValueError("Point clouds must contain xyz coordinates in the first three channels")
+
+            pos = point_clouds[..., :3]
+            if self.scalar_feature_dim > 0:
+                scalars = point_clouds[..., 3 : 3 + self.scalar_feature_dim]
+                if scalars.shape[-1] != self.scalar_feature_dim:
+                    raise ValueError(
+                        f"Expected {self.scalar_feature_dim} scalar point features, received {scalars.shape[-1]}"
+                    )
+            else:
+                scalars = point_clouds.new_zeros(b, tobs, npts, 0)
+
+            clouds_flat = scalars.reshape(b * tobs, npts, self.scalar_feature_dim)
+            pos_flat = pos.reshape(b * tobs, npts, 3)
+            vec_flat = pos_flat.unsqueeze(-2)  # (B*To, N, 1, 3)
+
+            transformer_out, _ = self.transformer(
+                x=clouds_flat,
+                pos=pos_flat,
+                batch=None,
+                vec=vec_flat,
+                mask=None,
+                time_conditioning=None,
+                class_conditioning=None,
+                avg_num_nodes=float(npts),
+            )
         else:
-            scalars = point_clouds.new_zeros(b, tobs, npts, 0)
+            if point_clouds.ndim != 2:
+                raise ValueError(
+                    "Sparse mode expects concatenated point_clouds shaped (total_points, C); "
+                    f"received tensor with shape {tuple(point_clouds.shape)}"
+                )
+            if point_sample_idx is None or point_obs_idx is None:
+                raise ValueError("Sparse mode requires point_sample_idx and point_obs_idx tensors")
 
-        clouds_flat = scalars.reshape(b * tobs, npts, self.scalar_feature_dim)
-        pos_flat = pos.reshape(b * tobs, npts, 3)
-        vec_flat = pos_flat.unsqueeze(-2)  # (B*To, N, 1, 3)
+            total_points, feat = point_clouds.shape
+            if feat < 3:
+                raise ValueError("Sparse point clouds must contain xyz coordinates in the first three channels")
 
-        transformer_out, _ = self.transformer(
-            x=clouds_flat,
-            pos=pos_flat,
-            batch=None,
-            vec=vec_flat,
-            mask=None,
-            time_conditioning=None,
-            class_conditioning=None,
-            avg_num_nodes=float(npts),
-        )
+            b = agent_pos.shape[0]
+            tobs = self.n_obs_steps
+            expected_frames = b * tobs
 
-        if agent_pos.ndim == 2:
-            agent_pos = agent_pos.unsqueeze(1).expand(-1, tobs, -1)
-        if agent_pos.shape[0] != b or agent_pos.shape[1] != tobs:
-            raise ValueError(
-                f"agent_pos should have shape (B, {tobs}, D), got {tuple(agent_pos.shape)}"
+            pos = point_clouds[:, :3]
+            if self.scalar_feature_dim > 0:
+                scalars = point_clouds[:, 3 : 3 + self.scalar_feature_dim]
+                if scalars.shape[-1] != self.scalar_feature_dim:
+                    raise ValueError(
+                        f"Expected {self.scalar_feature_dim} scalar point features, received {scalars.shape[-1]}"
+                    )
+            else:
+                scalars = point_clouds.new_zeros(total_points, 0, device=point_clouds.device, dtype=point_clouds.dtype)
+
+            frame_ids = point_sample_idx * tobs + point_obs_idx
+            max_frame_id = int(frame_ids.max().item()) if frame_ids.numel() > 0 else -1
+            if max_frame_id >= expected_frames:
+                raise ValueError(
+                    f"Frame index {max_frame_id} exceeds expected frames ({expected_frames}) "
+                    "computed from batch size and observation steps."
+                )
+
+            counts = torch.bincount(frame_ids, minlength=expected_frames).clamp(min=1)
+            avg_nodes = float(counts.float().mean().item())
+
+            vec = pos.unsqueeze(-2)  # (N, 1, 3)
+
+            transformer_out, _ = self.transformer(
+                x=scalars,
+                pos=pos,
+                batch=frame_ids,
+                vec=vec,
+                mask=None,
+                time_conditioning=None,
+                class_conditioning=None,
+                avg_num_nodes=avg_nodes,
             )
 
-        state_flat = agent_pos.reshape(b * tobs, -1)
+        if agent_pos.ndim == 2:
+            agent_pos = agent_pos.unsqueeze(1).expand(-1, self.n_obs_steps, -1)
+        if agent_pos.shape[0] * agent_pos.shape[1] != transformer_out.shape[0]:
+            raise ValueError(
+                "Mismatch between transformer outputs and agent_pos size: "
+                f"{transformer_out.shape[0]} vs {agent_pos.shape}"
+            )
+
+        state_flat = agent_pos.reshape(-1, agent_pos.shape[-1])
         state_feats = self.state_mlp(state_flat)
         per_frame = torch.cat([transformer_out, state_feats], dim=-1)
-        per_frame = per_frame.reshape(b, tobs, -1)
-        return per_frame.reshape(b, -1)
+        per_frame = per_frame.reshape(agent_pos.shape[0], self.n_obs_steps, -1)
+        return per_frame.reshape(agent_pos.shape[0], -1)
 
 
 @dataclass
@@ -128,6 +192,7 @@ class PlatonicDiffusionPolicyConfig:
     transformer_norm_first: bool
     transformer_layer_scale_init_value: Optional[float]
     transformer_use_cls_token: bool
+    transformer_dense_mode: bool
 
     state_mlp_hidden: tuple[int, ...]
     unet_hidden_dims: tuple[int, ...]
@@ -154,7 +219,7 @@ class PlatonicDiffusionPolicy(nn.Module):
             num_layers=cfg.transformer_num_layers,
             solid_name=cfg.transformer_solid,
             spatial_dim=3,
-            dense_mode=True,
+            dense_mode=cfg.transformer_dense_mode,
             scalar_task_level="graph",
             vector_task_level="graph",
             ffn_readout=cfg.transformer_ffn_readout,
@@ -208,9 +273,21 @@ class PlatonicDiffusionPolicy(nn.Module):
         self._normalizer_ready = False
 
     # ------------------------------------------------------------------
-    def encode_observation(self, point_clouds: torch.Tensor, agent_pos: torch.Tensor) -> torch.Tensor:
+    def encode_observation(
+        self,
+        point_clouds: torch.Tensor,
+        agent_pos: torch.Tensor,
+        *,
+        point_sample_idx: Optional[torch.Tensor] = None,
+        point_obs_idx: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Encode stacked observations into a global conditioning vector."""
-        return self.encoder(point_clouds, agent_pos)
+        return self.encoder(
+            point_clouds,
+            agent_pos,
+            point_sample_idx=point_sample_idx,
+            point_obs_idx=point_obs_idx,
+        )
 
     def set_normalizer(self, normalizer: LinearNormalizer) -> None:
         """Attach a frozen normaliser for training and sampling."""
@@ -233,7 +310,15 @@ class PlatonicDiffusionPolicy(nn.Module):
         )
         actions_norm = self.normalizer["action"].normalize(actions)
 
-        global_cond = self.encode_observation(obs_norm["point_clouds"], obs_norm["agent_pos"])
+        point_sample_idx = batch.get("point_cloud_sample_idx")
+        point_obs_idx = batch.get("point_cloud_obs_idx")
+
+        global_cond = self.encode_observation(
+            obs_norm["point_clouds"],
+            obs_norm["agent_pos"],
+            point_sample_idx=point_sample_idx,
+            point_obs_idx=point_obs_idx,
+        )
 
         noise = torch.randn_like(actions_norm)
         batch_size = actions.shape[0]
@@ -254,17 +339,29 @@ class PlatonicDiffusionPolicy(nn.Module):
         return loss, {"train_mse": float(loss.detach().cpu().item())}
 
     @torch.no_grad()
-    def sample(self, point_clouds: torch.Tensor, agent_pos: torch.Tensor) -> torch.Tensor:
+    def sample(
+        self,
+        point_clouds: torch.Tensor,
+        agent_pos: torch.Tensor,
+        *,
+        point_sample_idx: Optional[torch.Tensor] = None,
+        point_obs_idx: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Sample denoised action trajectories conditioned on observations."""
         if not self._normalizer_ready:
             raise RuntimeError("Normalizer must be set before sampling")
 
-        device = point_clouds.device
-        batch_size = point_clouds.shape[0]
+        device = agent_pos.device
+        batch_size = agent_pos.shape[0]
         obs_norm = self.normalizer.normalize(
             {"point_clouds": point_clouds, "agent_pos": agent_pos}
         )
-        global_cond = self.encode_observation(obs_norm["point_clouds"], obs_norm["agent_pos"])
+        global_cond = self.encode_observation(
+            obs_norm["point_clouds"],
+            obs_norm["agent_pos"],
+            point_sample_idx=point_sample_idx,
+            point_obs_idx=point_obs_idx,
+        )
 
         trajectory = torch.randn(
             batch_size,

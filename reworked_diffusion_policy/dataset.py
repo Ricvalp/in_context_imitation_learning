@@ -45,7 +45,148 @@ class DatasetConfig:
     max_samples_per_file: Optional[int] = None
 
 
-class RLBenchTemporalH5Dataset(Dataset):
+@dataclass
+class SparseDatasetConfig:
+    """Configuration for sparse point-cloud loading without fixed sampling."""
+
+    path: str
+    n_obs_steps: int
+    action_horizon: int
+    use_point_colors: bool = True
+    task_names: Sequence[str] | None = None
+    max_samples_per_file: Optional[int] = None
+    max_points_per_frame: Optional[int] = None
+
+
+class RLBenchDatasetBase(Dataset):
+    """Common utilities shared by dense and sparse RLBench datasets."""
+
+    def __init__(self, path: str, task_names: Sequence[str] | None = None) -> None:
+        super().__init__()
+        self.path = Path(path).expanduser().resolve()
+        self._task_names = tuple(task_names or [])
+        self._data: List[Dict[str, torch.Tensor]] = []
+        self._stats: Dict[str, Dict[str, torch.Tensor]] = {}
+        self._source_files = self._resolve_source_files()
+        self._normalizer: Optional[LinearNormalizer] = None
+
+    def _resolve_source_files(self) -> List[Path]:
+        """Materialise the list of HDF5 files that should be loaded."""
+        if self.path.is_file():
+            return [self.path]
+        if not self.path.exists():
+            raise FileNotFoundError(f"Dataset path not found: {self.path}")
+        if not self.path.is_dir():
+            raise FileNotFoundError(f"Unsupported dataset path: {self.path}")
+        if not self._task_names:
+            raise ValueError("task_names must be provided when dataset path is a directory")
+
+        resolved: List[Path] = []
+        for task in self._task_names:
+            task_dir = self.path / task
+            if not task_dir.is_dir():
+                raise FileNotFoundError(f"Task directory not found: {task_dir}")
+            h5_files = sorted(task_dir.glob("*.h5"))
+            if not h5_files:
+                raise FileNotFoundError(f"No .h5 files found in {task_dir}")
+            resolved.extend(h5_files)
+        if not resolved:
+            raise RuntimeError(f"No dataset files found for tasks {self._task_names}")
+        return resolved
+
+    def _accumulate(self, key: str, tensor: torch.Tensor) -> None:
+        feature_dim = tensor.shape[-1]
+        flat = tensor.reshape(-1, feature_dim).to(torch.float64)
+        if key not in self._stats:
+            self._stats[key] = {
+                "count": torch.zeros(1, dtype=torch.float64),
+                "sum": torch.zeros(feature_dim, dtype=torch.float64),
+                "sum_sq": torch.zeros(feature_dim, dtype=torch.float64),
+                "min": torch.full((feature_dim,), float("inf"), dtype=torch.float64),
+                "max": torch.full((feature_dim,), float("-inf"), dtype=torch.float64),
+            }
+
+        stats = self._stats[key]
+        count = flat.shape[0]
+        stats["count"] += count
+        stats["sum"] += flat.sum(dim=0)
+        stats["sum_sq"] += (flat ** 2).sum(dim=0)
+        stats["min"] = torch.minimum(stats["min"], flat.min(dim=0).values)
+        stats["max"] = torch.maximum(stats["max"], flat.max(dim=0).values)
+
+    def _build_normalizer(self) -> LinearNormalizer:
+        output_min = -1.0
+        output_max = 1.0
+        range_eps = 1e-4
+
+        normalizer = LinearNormalizer()
+        for key, stats in self._stats.items():
+            total_count = int(stats["count"].item())
+            if total_count <= 0:
+                raise RuntimeError(f"No statistics accumulated for field '{key}'")
+
+            sum_vals = stats["sum"]
+            sum_sq_vals = stats["sum_sq"]
+            mean = sum_vals / total_count
+            variance = torch.clamp(sum_sq_vals / total_count - mean ** 2, min=0.0)
+            std = torch.sqrt(variance)
+
+            input_min = stats["min"].to(torch.float32)
+            input_max = stats["max"].to(torch.float32)
+            input_mean = mean.to(torch.float32)
+            input_std = std.to(torch.float32)
+
+            input_range = input_max - input_min
+            scale = torch.empty_like(input_range)
+            offset = torch.empty_like(input_range)
+
+            ignore = input_range < range_eps
+            safe_range = input_range.clone()
+            safe_range[ignore] = output_max - output_min
+            scale = (output_max - output_min) / safe_range
+            offset = output_min - scale * input_min
+            midpoint = (output_max + output_min) / 2.0
+            offset[ignore] = midpoint - input_min[ignore]
+
+            input_stats = {
+                "min": input_min,
+                "max": input_max,
+                "mean": input_mean,
+                "std": input_std,
+            }
+
+            normalizer[key] = SingleFieldLinearNormalizer.create_manual(scale, offset, input_stats)
+
+        return normalizer
+
+    @property
+    def normalizer(self) -> LinearNormalizer:
+        if self._normalizer is None:
+            raise RuntimeError("Normalizer has not been built yet")
+        return self._normalizer
+
+    @property
+    def source_files(self) -> Tuple[Path, ...]:
+        return tuple(self._source_files)
+
+    @property
+    def task_names(self) -> Tuple[str, ...]:
+        return tuple(self._task_names)
+
+    def _format_action(self, action_seq: torch.Tensor, horizon: int) -> torch.Tensor:
+        steps = action_seq.shape[0]
+        if steps > horizon:
+            return action_seq[:horizon]
+        if steps == horizon:
+            return action_seq
+        if steps == 0:
+            pad = torch.zeros((horizon, action_seq.shape[-1]), dtype=action_seq.dtype)
+        else:
+            pad = action_seq[-1:].repeat(horizon - steps, 1)
+        return torch.cat([action_seq, pad], dim=0)
+
+
+class RLBenchTemporalH5Dataset(RLBenchDatasetBase):
     """Dataset that eagerly loads the entire cache into memory."""
 
     def __init__(self, cfg: DatasetConfig) -> None:
@@ -55,14 +196,10 @@ class RLBenchTemporalH5Dataset(Dataset):
             cfg: Dataset configuration describing the dataset root, point cloud
                 sampling strategy and horizon parameters.
         """
-        super().__init__()
         self.cfg = cfg
-        self.path = Path(cfg.path).expanduser().resolve()
-        self._task_names = tuple(cfg.task_names or [])
-
-        self._data: List[Dict[str, torch.Tensor]] = []
-        self._stats: Dict[str, Dict[str, torch.Tensor]] = {}
-        self._source_files = self._resolve_source_files()
+        super().__init__(cfg.path, cfg.task_names)
+        self._data = []
+        self._stats = {}
         for file_path in self._source_files:
             with h5py.File(file_path, "r") as handle:
                 length = int(handle.attrs["length"])
@@ -172,7 +309,7 @@ class RLBenchTemporalH5Dataset(Dataset):
         action_seq = torch.from_numpy(
             sample_grp["action"]["sequence"][()].astype(np.float32)
         )
-        action_seq = self._format_action(action_seq)
+        action_seq = self._format_action(action_seq, self.cfg.action_horizon)
 
         return {
             "point_clouds": point_cloud_tensor,
@@ -181,34 +318,6 @@ class RLBenchTemporalH5Dataset(Dataset):
         }
 
     # ------------------------------------------------------------------
-    def _resolve_source_files(self) -> List[Path]:
-        """Materialise the list of HDF5 files that should be loaded.
-
-        Returns:
-            List of absolute :class:`Path` instances pointing to cache files.
-        """
-        if self.path.is_file():
-            return [self.path]
-        if not self.path.exists():
-            raise FileNotFoundError(f"Dataset path not found: {self.path}")
-        if not self.path.is_dir():
-            raise FileNotFoundError(f"Unsupported dataset path: {self.path}")
-        if not self._task_names:
-            raise ValueError("task_names must be provided when dataset path is a directory")
-
-        resolved: List[Path] = []
-        for task in self._task_names:
-            task_dir = self.path / task
-            if not task_dir.is_dir():
-                raise FileNotFoundError(f"Task directory not found: {task_dir}")
-            h5_files = sorted(task_dir.glob("*.h5"))
-            if not h5_files:
-                raise FileNotFoundError(f"No .h5 files found in {task_dir}")
-            resolved.extend(h5_files)
-        if not resolved:
-            raise RuntimeError(f"No dataset files found for tasks {self._task_names}")
-        return resolved
-
     def _update_stats(self, sample: Dict[str, torch.Tensor]) -> None:
         """Accumulate per-feature statistics used for normalisation.
 
@@ -219,81 +328,132 @@ class RLBenchTemporalH5Dataset(Dataset):
         self._accumulate("agent_pos", sample["agent_pos"])
         self._accumulate("action", sample["action"])
 
-    def _accumulate(self, key: str, tensor: torch.Tensor) -> None:
-        """Update running min/mean/max statistics for ``tensor``.
 
-        Args:
-            key: Field name whose statistics are being tracked.
-            tensor: Tensor containing the values to accumulate.
-        """
-        feature_dim = tensor.shape[-1]
-        flat = tensor.reshape(-1, feature_dim).to(torch.float64)
-        if key not in self._stats:
-            self._stats[key] = {
-                "count": torch.zeros(1, dtype=torch.float64),
-                "sum": torch.zeros(feature_dim, dtype=torch.float64),
-                "sum_sq": torch.zeros(feature_dim, dtype=torch.float64),
-                "min": torch.full((feature_dim,), float("inf"), dtype=torch.float64),
-                "max": torch.full((feature_dim,), float("-inf"), dtype=torch.float64),
-            }
+class RLBenchTemporalH5SparseDataset(RLBenchDatasetBase):
+    """Sparse variant that keeps all available points without fixed subsampling."""
 
-        stats = self._stats[key]
-        count = flat.shape[0]
-        stats["count"] += count
-        stats["sum"] += flat.sum(dim=0)
-        stats["sum_sq"] += (flat ** 2).sum(dim=0)
-        stats["min"] = torch.minimum(stats["min"], flat.min(dim=0).values)
-        stats["max"] = torch.maximum(stats["max"], flat.max(dim=0).values)
+    def __init__(self, cfg: SparseDatasetConfig) -> None:
+        self.cfg = cfg
+        super().__init__(cfg.path, cfg.task_names)
+        self._data = []
+        self._stats = {}
 
-    def _build_normalizer(self) -> LinearNormalizer:
-        """Create a normalizer that maps features to approximately ``[-1, 1]``.
+        for file_path in self._source_files:
+            with h5py.File(file_path, "r") as handle:
+                length = int(handle.attrs["length"])
+                samples = handle["samples"]
+                max_samples = self.cfg.max_samples_per_file
+                num_to_load = length if max_samples is None else min(length, max_samples)
+                for index in tqdm(range(num_to_load), desc=f"Loading {file_path.name}"):
+                    sample_grp = samples[str(index)]
+                    sample = self._process_sample(sample_grp)
+                    self._data.append(sample)
+                    self._update_stats(sample)
 
-        Returns:
-            :class:`LinearNormalizer` built from accumulated statistics.
-        """
-        output_min = -1.0
-        output_max = 1.0
-        range_eps = 1e-4
+        if not self._data:
+            raise RuntimeError(f"No samples loaded from {self._source_files}")
 
-        normalizer = LinearNormalizer()
-        for key, stats in self._stats.items():
-            total_count = int(stats["count"].item())
-            if total_count <= 0:
-                raise RuntimeError(f"No statistics accumulated for field '{key}'")
+        self._normalizer = self._build_normalizer()
 
-            sum_vals = stats["sum"]
-            sum_sq_vals = stats["sum_sq"]
-            mean = sum_vals / total_count
-            variance = torch.clamp(sum_sq_vals / total_count - mean ** 2, min=0.0)
-            std = torch.sqrt(variance)
+    def __len__(self) -> int:  # type: ignore[override]
+        return len(self._data)
 
-            input_min = stats["min"].to(torch.float32)
-            input_max = stats["max"].to(torch.float32)
-            input_mean = mean.to(torch.float32)
-            input_std = std.to(torch.float32)
+    def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:  # type: ignore[override]
+        if index < 0 or index >= len(self._data):
+            raise IndexError(index)
+        sample = self._data[index]
+        return {
+            "point_clouds": sample["point_clouds"].clone(),
+            "frame_lengths": sample["frame_lengths"].clone(),
+            "agent_pos": sample["agent_pos"].clone(),
+            "action": sample["action"].clone(),
+        }
 
-            input_range = input_max - input_min
-            scale = torch.empty_like(input_range)
-            offset = torch.empty_like(input_range)
+    def _process_sample(self, sample_grp: h5py.Group) -> Dict[str, torch.Tensor]:
+        obs_grp = sample_grp["observation"]
+        pc_sequence = obs_grp["point_cloud_sequence"]
+        proprio_sequence = torch.from_numpy(obs_grp["proprio_sequence"][()].astype(np.float32))
 
-            ignore = input_range < range_eps
-            safe_range = input_range.clone()
-            safe_range[ignore] = output_max - output_min
-            scale = (output_max - output_min) / safe_range
-            offset = output_min - scale * input_min
-            midpoint = (output_max + output_min) / 2.0
-            offset[ignore] = midpoint - input_min[ignore]
+        point_clouds: List[torch.Tensor] = []
+        agent_states: List[torch.Tensor] = []
+        frame_lengths: List[int] = []
 
-            input_stats = {
-                "min": input_min,
-                "max": input_max,
-                "mean": input_mean,
-                "std": input_std,
-            }
+        obs_len = int(pc_sequence.attrs.get("length", len(pc_sequence)))
+        start = max(0, obs_len - self.cfg.n_obs_steps)
+        indices = list(range(start, obs_len))
 
-            normalizer[key] = SingleFieldLinearNormalizer.create_manual(scale, offset, input_stats)
+        for obs_idx in indices:
+            frame = pc_sequence[str(obs_idx)]
+            points = torch.from_numpy(frame["points"][()].astype(np.float32))
+            masks = torch.from_numpy(frame["masks"][()].astype(np.bool_))
+            if self.cfg.use_point_colors:
+                colors = torch.from_numpy(ensure_float_colors(frame["colors"][()]))
+            else:
+                colors = None
 
-        return normalizer
+            valid_points = points[masks]
+            if valid_points.shape[0] == 0:
+                valid_points = points
+                valid_colors = colors
+            else:
+                valid_colors = colors[masks] if colors is not None else None
+
+            if self.cfg.max_points_per_frame is not None and valid_points.shape[0] > self.cfg.max_points_per_frame:
+                perm = torch.randperm(valid_points.shape[0])[: self.cfg.max_points_per_frame]
+                valid_points = valid_points[perm]
+                if valid_colors is not None:
+                    valid_colors = valid_colors[perm]
+
+            if self.cfg.use_point_colors:
+                if valid_colors is None:
+                    valid_colors = torch.zeros_like(valid_points)
+                features = torch.cat([valid_points, valid_colors], dim=-1)
+            else:
+                features = valid_points
+
+            point_clouds.append(features)
+            frame_lengths.append(int(features.shape[0]))
+
+            state_index = min(obs_idx, proprio_sequence.shape[0] - 1)
+            agent_states.append(proprio_sequence[state_index])
+
+        if not point_clouds:
+            raise RuntimeError("Sample contains no point clouds")
+
+        while len(point_clouds) < self.cfg.n_obs_steps:
+            point_clouds.insert(0, point_clouds[0].clone())
+            frame_lengths.insert(0, frame_lengths[0])
+            agent_states.insert(0, agent_states[0].clone())
+
+        frame_tensors = []
+        for tensor in point_clouds:
+            if tensor.shape[0] == 0:
+                filler = torch.zeros((1, tensor.shape[-1]), dtype=tensor.dtype)
+                frame_tensors.append(filler)
+            else:
+                frame_tensors.append(tensor)
+
+        frame_lengths = [int(t.shape[0]) for t in frame_tensors]
+        point_cloud_tensor = torch.cat(frame_tensors, dim=0)
+        frame_lengths_tensor = torch.tensor(frame_lengths, dtype=torch.long)
+        agent_state_tensor = torch.stack(agent_states, dim=0)
+
+        action_seq = torch.from_numpy(
+            sample_grp["action"]["sequence"][()].astype(np.float32)
+        )
+        action_seq = self._format_action(action_seq, self.cfg.action_horizon)
+
+        return {
+            "point_clouds": point_cloud_tensor,
+            "frame_lengths": frame_lengths_tensor,
+            "agent_pos": agent_state_tensor,
+            "action": action_seq,
+        }
+
+    def _update_stats(self, sample: Dict[str, torch.Tensor]) -> None:
+        self._accumulate("point_clouds", sample["point_clouds"])
+        self._accumulate("agent_pos", sample["agent_pos"])
+        self._accumulate("action", sample["action"])
 
     @property
     def normalizer(self) -> LinearNormalizer:
@@ -321,28 +481,6 @@ class RLBenchTemporalH5Dataset(Dataset):
             Tuple of task name strings.
         """
         return tuple(self._task_names)
-
-    def _format_action(self, action_seq: torch.Tensor) -> torch.Tensor:
-        """Clamp or pad an action sequence to the configured horizon.
-
-        Args:
-            action_seq: Raw action sequence tensor ``(T, D)`` from the dataset.
-
-        Returns:
-            Tensor containing exactly ``action_horizon`` steps.
-        """
-        horizon = self.cfg.action_horizon
-        steps = action_seq.shape[0]
-        if steps > horizon:
-            return action_seq[:horizon]
-        if steps == horizon:
-            return action_seq
-        if steps == 0:
-            pad = torch.zeros((horizon, action_seq.shape[-1]), dtype=action_seq.dtype)
-        else:
-            pad = action_seq[-1:].repeat(horizon - steps, 1)
-        return torch.cat([action_seq, pad], dim=0)
-
 
 def sample_points(
     points: torch.Tensor,
@@ -397,10 +535,52 @@ def collate_temporal_batch(batch: Sequence[Dict[str, torch.Tensor]]) -> Dict[str
     }
 
 
+def collate_sparse_temporal_batch(batch: Sequence[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+    """Collate function for sparse point clouds with per-frame bookkeeping."""
+    point_chunks: List[torch.Tensor] = []
+    sample_indices: List[torch.Tensor] = []
+    obs_indices: List[torch.Tensor] = []
+    frame_lengths: List[torch.Tensor] = []
+    agent_states: List[torch.Tensor] = []
+    actions: List[torch.Tensor] = []
+
+    for sample_id, item in enumerate(batch):
+        points = item["point_clouds"]
+        lengths = item["frame_lengths"]
+        point_chunks.append(points)
+        frame_lengths.append(lengths)
+        agent_states.append(item["agent_pos"])
+        actions.append(item["action"])
+
+        sample_idx = torch.full((points.shape[0],), sample_id, dtype=torch.long)
+        obs_idx = torch.arange(lengths.shape[0], dtype=torch.long).repeat_interleave(lengths)
+        sample_indices.append(sample_idx)
+        obs_indices.append(obs_idx)
+
+    point_clouds = torch.cat(point_chunks, dim=0)
+    point_cloud_sample_idx = torch.cat(sample_indices, dim=0)
+    point_cloud_obs_idx = torch.cat(obs_indices, dim=0)
+    frame_lengths_tensor = torch.stack(frame_lengths, dim=0)
+    agent_pos = torch.stack(agent_states, dim=0)
+    actions_tensor = torch.stack(actions, dim=0)
+
+    return {
+        "point_clouds": point_clouds,
+        "point_cloud_sample_idx": point_cloud_sample_idx,
+        "point_cloud_obs_idx": point_cloud_obs_idx,
+        "frame_lengths": frame_lengths_tensor,
+        "agent_pos": agent_pos,
+        "action": actions_tensor,
+    }
+
+
 __all__ = [
     "DatasetConfig",
+    "SparseDatasetConfig",
     "RLBenchTemporalH5Dataset",
+    "RLBenchTemporalH5SparseDataset",
     "collate_temporal_batch",
+    "collate_sparse_temporal_batch",
     "ensure_float_colors",
     "sample_points",
 ]

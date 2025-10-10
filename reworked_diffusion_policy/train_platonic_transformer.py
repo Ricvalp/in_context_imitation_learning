@@ -15,7 +15,14 @@ from torch.utils.data import DataLoader
 
 from .platonic_config import get_config
 from .checkpoint import CheckpointManager
-from .dataset import DatasetConfig, RLBenchTemporalH5Dataset, collate_temporal_batch
+from .dataset import (
+    DatasetConfig,
+    SparseDatasetConfig,
+    RLBenchTemporalH5Dataset,
+    RLBenchTemporalH5SparseDataset,
+    collate_temporal_batch,
+    collate_sparse_temporal_batch,
+)
 from .models.platonic_policy import PlatonicDiffusionPolicy, PlatonicDiffusionPolicyConfig
 from .models.platonic_transformer.groups import PLATONIC_GROUPS
 from .utils import (
@@ -54,6 +61,17 @@ flags.DEFINE_integer(
     "debug_max_samples",
     16,
     "Number of samples to load per task when --debug_dataset is enabled",
+)
+flags.DEFINE_enum(
+    "dataset_mode",
+    None,
+    ["dense", "sparse"],
+    "Point-cloud batching strategy to use (dense or sparse).",
+)
+flags.DEFINE_integer(
+    "sparse_max_points",
+    None,
+    "Optional cap on the number of points per frame when using sparse mode.",
 )
 
 
@@ -98,6 +116,11 @@ def _apply_overrides(cfg: ConfigDict) -> ConfigDict:
         cfg.debug.limit_dataset = True
     if FLAGS.debug_max_samples is not None:
         cfg.debug.max_samples_per_task = max(1, FLAGS.debug_max_samples)
+    if FLAGS.dataset_mode:
+        cfg.dataset_mode = FLAGS.dataset_mode
+    if FLAGS.sparse_max_points is not None:
+        cfg.sparse_max_points_per_frame = max(1, FLAGS.sparse_max_points)
+    cfg.model.transformer.dense_mode = cfg.dataset_mode != "sparse"
     return cfg
 
 
@@ -127,17 +150,32 @@ def build_dataloaders(cfg: ConfigDict):
     if hasattr(cfg, "debug") and cfg.debug.limit_dataset:
         max_samples = max(1, int(cfg.debug.max_samples_per_task))
 
-    dataset_cfg = DatasetConfig(
-        path=cfg.dataset_path,
-        sample_points=cfg.sample_points,
-        n_obs_steps=cfg.n_obs_steps,
-        action_horizon=cfg.horizon,
-        use_point_colors=cfg.use_point_colors,
-        task_names=tuple(cfg.tasks or ()),
-        max_samples_per_file=max_samples,
-    )
+    dataset_mode = getattr(cfg, "dataset_mode", "dense")
 
-    dataset = RLBenchTemporalH5Dataset(dataset_cfg)
+    if dataset_mode == "sparse":
+        dataset_cfg = SparseDatasetConfig(
+            path=cfg.dataset_path,
+            n_obs_steps=cfg.n_obs_steps,
+            action_horizon=cfg.horizon,
+            use_point_colors=cfg.use_point_colors,
+            task_names=tuple(cfg.tasks or ()),
+            max_samples_per_file=max_samples,
+            max_points_per_frame=cfg.sparse_max_points_per_frame,
+        )
+        dataset = RLBenchTemporalH5SparseDataset(dataset_cfg)
+        collate_fn = collate_sparse_temporal_batch
+    else:
+        dataset_cfg = DatasetConfig(
+            path=cfg.dataset_path,
+            sample_points=cfg.sample_points,
+            n_obs_steps=cfg.n_obs_steps,
+            action_horizon=cfg.horizon,
+            use_point_colors=cfg.use_point_colors,
+            task_names=tuple(cfg.tasks or ()),
+            max_samples_per_file=max_samples,
+        )
+        dataset = RLBenchTemporalH5Dataset(dataset_cfg)
+        collate_fn = collate_temporal_batch
 
     train_loader = DataLoader(
         dataset,
@@ -146,7 +184,7 @@ def build_dataloaders(cfg: ConfigDict):
         num_workers=cfg.num_workers,
         pin_memory=cfg.pin_memory,
         drop_last=cfg.drop_last,
-        collate_fn=collate_temporal_batch,
+        collate_fn=collate_fn,
     )
 
     eval_loader = DataLoader(
@@ -156,7 +194,7 @@ def build_dataloaders(cfg: ConfigDict):
         num_workers=max(0, cfg.num_workers // 2),
         pin_memory=cfg.pin_memory,
         drop_last=False,
-        collate_fn=collate_temporal_batch,
+        collate_fn=collate_fn,
     )
 
     return dataset, train_loader, eval_loader
@@ -188,6 +226,11 @@ def build_model(cfg: ConfigDict) -> PlatonicDiffusionPolicy:
         )
     input_scalar_dim = transformer_cfg.input_scalar_dim if cfg.use_point_colors else 0
 
+    use_cls_token = transformer_cfg.use_cls_token
+    if not transformer_cfg.dense_mode and use_cls_token:
+        logging.warning("CLS token is not supported in sparse transformer mode; disabling it.")
+        use_cls_token = False
+
     model_cfg = PlatonicDiffusionPolicyConfig(
         horizon=cfg.horizon,
         n_obs_steps=cfg.n_obs_steps,
@@ -214,7 +257,8 @@ def build_model(cfg: ConfigDict) -> PlatonicDiffusionPolicy:
         transformer_ffn_readout=transformer_cfg.ffn_readout,
         transformer_norm_first=transformer_cfg.norm_first,
         transformer_layer_scale_init_value=transformer_cfg.layer_scale_init_value,
-        transformer_use_cls_token=transformer_cfg.use_cls_token,
+        transformer_use_cls_token=use_cls_token,
+        transformer_dense_mode=transformer_cfg.dense_mode,
         state_mlp_hidden=tuple(cfg.model.state_mlp_dims),
         unet_hidden_dims=tuple(cfg.model.unet.hidden_dims),
         unet_kernel_size=cfg.model.unet.kernel_size,
@@ -252,10 +296,38 @@ def evaluate(
     total_samples = 0
     vis_sample = None
 
+    def _gather_first_pointcloud(batch_dict: Dict[str, torch.Tensor]) -> torch.Tensor:
+        if "point_cloud_sample_idx" not in batch_dict:
+            return batch_dict["point_clouds"][0].cpu()
+
+        sample_idx = 0
+        sample_mask = batch_dict["point_cloud_sample_idx"] == sample_idx
+        points = batch_dict["point_clouds"][sample_mask].cpu()
+        obs_ids = batch_dict["point_cloud_obs_idx"][sample_mask].cpu()
+        lengths = batch_dict.get("frame_lengths")
+        if lengths is None:
+            raise ValueError("frame_lengths missing from sparse batch")
+        lengths = lengths[sample_idx].cpu()
+        max_len = int(lengths.max().item())
+        feat_dim = points.shape[-1]
+        dense = torch.zeros(cfg.n_obs_steps, max_len, feat_dim)
+        for obs_step in range(cfg.n_obs_steps):
+            mask = obs_ids == obs_step
+            step_points = points[mask]
+            count = step_points.shape[0]
+            if count > 0:
+                dense[obs_step, :count] = step_points
+        return dense
+
     with torch.no_grad():
         for batch_idx, batch in enumerate(dataloader):
             batch = _to_device(batch, device)
-            preds = model.sample(batch["point_clouds"], batch["agent_pos"])
+            preds = model.sample(
+                batch["point_clouds"],
+                batch["agent_pos"],
+                point_sample_idx=batch.get("point_cloud_sample_idx"),
+                point_obs_idx=batch.get("point_cloud_obs_idx"),
+            )
             target = batch["action"]
             batch_mse = mse(preds, target)
             bs = preds.shape[0]
@@ -264,7 +336,7 @@ def evaluate(
 
             if vis_sample is None:
                 vis_sample = (
-                    batch["point_clouds"][0].cpu(),
+                    _gather_first_pointcloud(batch),
                     target[0].cpu(),
                     preds[0].cpu(),
                 )
