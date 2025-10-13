@@ -5,14 +5,14 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]  # repo root
 
 # -- Project information -----------------------------------------------------
-project = 'IcContextImitationLearning'
-author = 'David & Riccardo'
-release = '0.0.1'
+project = "IcContextImitationLearning"
+author = "David & Riccardo"
+release = "0.0.1"
 
 # -- General configuration ---------------------------------------------------
 extensions = [
-    "autoapi.extension",     # parses source code directly (no imports)
-    "sphinx.ext.napoleon",   # Google/NumPy docstrings
+    "autoapi.extension",  # parses source code directly (no imports)
+    "sphinx.ext.napoleon",  # Google/NumPy docstrings
     "sphinx.ext.viewcode",
 ]
 
@@ -34,4 +34,4 @@ napoleon_use_rtype = True
 
 # -- HTML --------------------------------------------------------------------
 html_theme = "sphinx_rtd_theme"
-html_static_path = ['_static']
+html_static_path = ["_static"]

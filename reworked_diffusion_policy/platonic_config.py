@@ -32,11 +32,15 @@ def get_config() -> ConfigDict:
     cfg.model = ConfigDict()
     cfg.model.transformer = ConfigDict()
     cfg.model.transformer.input_scalar_dim = 3  # RGB values appended to xyz
-    cfg.model.transformer.input_vector_dim = 1  # xyz interpreted as a single vector channel
-    cfg.model.transformer.hidden_dim = 384      # divisible by |G| for tetrahedral group (12)
+    cfg.model.transformer.input_vector_dim = (
+        1  # xyz interpreted as a single vector channel
+    )
+    cfg.model.transformer.hidden_dim = (
+        384  # divisible by |G| for tetrahedral group (12)
+    )
     cfg.model.transformer.output_dim = 256
     cfg.model.transformer.num_layers = 4
-    cfg.model.transformer.num_heads = 12        # multiples of |G|
+    cfg.model.transformer.num_heads = 12  # multiples of |G|
     cfg.model.transformer.solid = "tetrahedron"
     cfg.model.transformer.dropout = 0.1
     cfg.model.transformer.drop_path_rate = 0.1

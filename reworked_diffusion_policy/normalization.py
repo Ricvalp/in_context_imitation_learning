@@ -138,9 +138,14 @@ class SingleFieldLinearNormalizer(nn.Module):
         Returns:
             Dictionary of transformed statistics in the output space.
         """
-        return {name: self.normalize(value) for name, value in self.input_stats.as_dict().items()}
+        return {
+            name: self.normalize(value)
+            for name, value in self.input_stats.as_dict().items()
+        }
 
-    def forward(self, tensor: torch.Tensor) -> torch.Tensor:  # pragma: no cover - nn.Module API
+    def forward(
+        self, tensor: torch.Tensor
+    ) -> torch.Tensor:  # pragma: no cover - nn.Module API
         return self.normalize(tensor)
 
 
@@ -161,7 +166,9 @@ class LinearNormalizer(nn.Module):
             raise TypeError("value must be a SingleFieldLinearNormalizer")
         self.params_dict[key] = value
 
-    def normalize(self, x: Union[Dict[str, torch.Tensor], torch.Tensor]) -> Union[Dict[str, torch.Tensor], torch.Tensor]:
+    def normalize(
+        self, x: Union[Dict[str, torch.Tensor], torch.Tensor]
+    ) -> Union[Dict[str, torch.Tensor], torch.Tensor]:
         """Normalise either a tensor or mapping by delegating to field-specific modules.
 
         Args:
@@ -184,7 +191,9 @@ class LinearNormalizer(nn.Module):
             raise RuntimeError("Normalizer has no default entry")
         return self.params_dict["_default"].normalize(value)
 
-    def unnormalize(self, x: Union[Dict[str, torch.Tensor], torch.Tensor]) -> Union[Dict[str, torch.Tensor], torch.Tensor]:
+    def unnormalize(
+        self, x: Union[Dict[str, torch.Tensor], torch.Tensor]
+    ) -> Union[Dict[str, torch.Tensor], torch.Tensor]:
         """Invert :meth:`normalize` for a tensor or mapping.
 
         Args:
@@ -204,11 +213,17 @@ class LinearNormalizer(nn.Module):
 
     def get_input_stats(self) -> Dict[str, Dict[str, torch.Tensor]]:
         """Return the training-time statistics for each registered field."""
-        return {key: normalizer.get_input_stats() for key, normalizer in self.params_dict.items()}
+        return {
+            key: normalizer.get_input_stats()
+            for key, normalizer in self.params_dict.items()
+        }
 
     def get_output_stats(self) -> Dict[str, Dict[str, torch.Tensor]]:
         """Return post-normalisation statistics for each registered field."""
-        return {key: normalizer.get_output_stats() for key, normalizer in self.params_dict.items()}
+        return {
+            key: normalizer.get_output_stats()
+            for key, normalizer in self.params_dict.items()
+        }
 
     def _load_from_state_dict(
         self,
@@ -227,7 +242,7 @@ class LinearNormalizer(nn.Module):
             if not key.startswith(own_prefix):
                 continue
 
-            suffix = key[len(own_prefix):]
+            suffix = key[len(own_prefix) :]
             parts = suffix.split(".")
             if len(parts) < 2:
                 if strict:
@@ -273,5 +288,6 @@ class LinearNormalizer(nn.Module):
             unexpected_keys,
             error_msgs,
         )
+
 
 __all__ = ["LinearNormalizer", "SingleFieldLinearNormalizer"]

@@ -79,7 +79,9 @@ class RLBenchDatasetBase(Dataset):
         if not self.path.is_dir():
             raise FileNotFoundError(f"Unsupported dataset path: {self.path}")
         if not self._task_names:
-            raise ValueError("task_names must be provided when dataset path is a directory")
+            raise ValueError(
+                "task_names must be provided when dataset path is a directory"
+            )
 
         resolved: List[Path] = []
         for task in self._task_names:
@@ -110,7 +112,7 @@ class RLBenchDatasetBase(Dataset):
         count = flat.shape[0]
         stats["count"] += count
         stats["sum"] += flat.sum(dim=0)
-        stats["sum_sq"] += (flat ** 2).sum(dim=0)
+        stats["sum_sq"] += (flat**2).sum(dim=0)
         stats["min"] = torch.minimum(stats["min"], flat.min(dim=0).values)
         stats["max"] = torch.maximum(stats["max"], flat.max(dim=0).values)
 
@@ -128,7 +130,7 @@ class RLBenchDatasetBase(Dataset):
             sum_vals = stats["sum"]
             sum_sq_vals = stats["sum_sq"]
             mean = sum_vals / total_count
-            variance = torch.clamp(sum_sq_vals / total_count - mean ** 2, min=0.0)
+            variance = torch.clamp(sum_sq_vals / total_count - mean**2, min=0.0)
             std = torch.sqrt(variance)
 
             input_min = stats["min"].to(torch.float32)
@@ -155,7 +157,9 @@ class RLBenchDatasetBase(Dataset):
                 "std": input_std,
             }
 
-            normalizer[key] = SingleFieldLinearNormalizer.create_manual(scale, offset, input_stats)
+            normalizer[key] = SingleFieldLinearNormalizer.create_manual(
+                scale, offset, input_stats
+            )
 
         return normalizer
 
@@ -205,7 +209,9 @@ class RLBenchTemporalH5Dataset(RLBenchDatasetBase):
                 length = int(handle.attrs["length"])
                 samples = handle["samples"]
                 max_samples = self.cfg.max_samples_per_file
-                num_to_load = length if max_samples is None else min(length, max_samples)
+                num_to_load = (
+                    length if max_samples is None else min(length, max_samples)
+                )
                 for index in tqdm(range(num_to_load), desc=f"Loading {file_path.name}"):
                     sample_grp = samples[str(index)]
                     sample = self._process_sample(sample_grp)
@@ -255,7 +261,9 @@ class RLBenchTemporalH5Dataset(RLBenchDatasetBase):
         """
         obs_grp = sample_grp["observation"]
         pc_sequence = obs_grp["point_cloud_sequence"]
-        proprio_sequence = torch.from_numpy(obs_grp["proprio_sequence"][()].astype(np.float32))
+        proprio_sequence = torch.from_numpy(
+            obs_grp["proprio_sequence"][()].astype(np.float32)
+        )
 
         point_clouds: List[torch.Tensor] = []
         agent_states: List[torch.Tensor] = []
@@ -343,7 +351,9 @@ class RLBenchTemporalH5SparseDataset(RLBenchDatasetBase):
                 length = int(handle.attrs["length"])
                 samples = handle["samples"]
                 max_samples = self.cfg.max_samples_per_file
-                num_to_load = length if max_samples is None else min(length, max_samples)
+                num_to_load = (
+                    length if max_samples is None else min(length, max_samples)
+                )
                 for index in tqdm(range(num_to_load), desc=f"Loading {file_path.name}"):
                     sample_grp = samples[str(index)]
                     sample = self._process_sample(sample_grp)
@@ -372,7 +382,9 @@ class RLBenchTemporalH5SparseDataset(RLBenchDatasetBase):
     def _process_sample(self, sample_grp: h5py.Group) -> Dict[str, torch.Tensor]:
         obs_grp = sample_grp["observation"]
         pc_sequence = obs_grp["point_cloud_sequence"]
-        proprio_sequence = torch.from_numpy(obs_grp["proprio_sequence"][()].astype(np.float32))
+        proprio_sequence = torch.from_numpy(
+            obs_grp["proprio_sequence"][()].astype(np.float32)
+        )
 
         point_clouds: List[torch.Tensor] = []
         agent_states: List[torch.Tensor] = []
@@ -398,8 +410,13 @@ class RLBenchTemporalH5SparseDataset(RLBenchDatasetBase):
             else:
                 valid_colors = colors[masks] if colors is not None else None
 
-            if self.cfg.max_points_per_frame is not None and valid_points.shape[0] > self.cfg.max_points_per_frame:
-                perm = torch.randperm(valid_points.shape[0])[: self.cfg.max_points_per_frame]
+            if (
+                self.cfg.max_points_per_frame is not None
+                and valid_points.shape[0] > self.cfg.max_points_per_frame
+            ):
+                perm = torch.randperm(valid_points.shape[0])[
+                    : self.cfg.max_points_per_frame
+                ]
                 valid_points = valid_points[perm]
                 if valid_colors is not None:
                     valid_colors = valid_colors[perm]
@@ -482,6 +499,7 @@ class RLBenchTemporalH5SparseDataset(RLBenchDatasetBase):
         """
         return tuple(self._task_names)
 
+
 def sample_points(
     points: torch.Tensor,
     colors: Optional[torch.Tensor],
@@ -515,7 +533,9 @@ def sample_points(
     return sampled_points, sampled_colors
 
 
-def collate_temporal_batch(batch: Sequence[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+def collate_temporal_batch(
+    batch: Sequence[Dict[str, torch.Tensor]],
+) -> Dict[str, torch.Tensor]:
     """Stack a sequence of samples into a single mini-batch.
 
     Args:
@@ -535,7 +555,9 @@ def collate_temporal_batch(batch: Sequence[Dict[str, torch.Tensor]]) -> Dict[str
     }
 
 
-def collate_sparse_temporal_batch(batch: Sequence[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+def collate_sparse_temporal_batch(
+    batch: Sequence[Dict[str, torch.Tensor]],
+) -> Dict[str, torch.Tensor]:
     """Collate function for sparse point clouds with per-frame bookkeeping."""
     point_chunks: List[torch.Tensor] = []
     sample_indices: List[torch.Tensor] = []
@@ -553,7 +575,9 @@ def collate_sparse_temporal_batch(batch: Sequence[Dict[str, torch.Tensor]]) -> D
         actions.append(item["action"])
 
         sample_idx = torch.full((points.shape[0],), sample_id, dtype=torch.long)
-        obs_idx = torch.arange(lengths.shape[0], dtype=torch.long).repeat_interleave(lengths)
+        obs_idx = torch.arange(lengths.shape[0], dtype=torch.long).repeat_interleave(
+            lengths
+        )
         sample_indices.append(sample_idx)
         obs_indices.append(obs_idx)
 

@@ -24,7 +24,9 @@ from models.baseline.esen.models.uma.common.rotation import (
     init_edge_rot_mat,
     rotation_to_wigner,
 )
-from models.baseline.esen.models.uma.common.rotation_cuda_graph import RotMatWignerCudaGraph
+from models.baseline.esen.models.uma.common.rotation_cuda_graph import (
+    RotMatWignerCudaGraph,
+)
 from models.baseline.esen.models.uma.common.so3 import CoefficientMapping, SO3_Grid
 from models.baseline.esen.models.uma.nn.embedding_dev import (
     ChgSpinEmbedding,
@@ -391,15 +393,15 @@ class eSCNMDBackbone(nn.Module, MOLEInterface):
             )  # [n_edges, 3]
 
             # Filter out edges with very small distances to prevent numerical instability
-            edge_distance = torch.linalg.norm(
-                edge_distance_vec, dim=-1, keepdim=False
-            )
+            edge_distance = torch.linalg.norm(edge_distance_vec, dim=-1, keepdim=False)
 
             # Filter out edges that are too close
             # This had to added to handle some rouge data points
             valid_edges = edge_distance > 1e-4
             if not torch.all(valid_edges):
-                print(f"Warning: Filtered out {(~valid_edges).sum().item()} edges with distance <= 1e-4")
+                print(
+                    f"Warning: Filtered out {(~valid_edges).sum().item()} edges with distance <= 1e-4"
+                )
                 edge_distance_vec = edge_distance_vec[valid_edges]
                 edge_distance = edge_distance[valid_edges]
                 # Update edge_index to match filtered edges
@@ -500,7 +502,7 @@ class eSCNMDBackbone(nn.Module, MOLEInterface):
         ## Mo: we made this edit
         # sys_node_embedding = csd_mixed_emb[data_dict["batch"]]
         sys_node_embedding = None
-        x_message[:, 0, :] = x_message[:, 0, :] # + sys_node_embedding
+        x_message[:, 0, :] = x_message[:, 0, :]  # + sys_node_embedding
 
         ###
         # Hook to allow MOLE
@@ -925,14 +927,13 @@ class MLP_Stress_Head(nn.Module, HeadInterface):
         return {"stress": stress}
 
 
-
 @registry.register_model("esen")
 class eSEN(nn.Module):
     """
     eSEN Network for energy prediction only
     Combines eSCNMD backbone with MLP Energy Head
     """
-    
+
     def __init__(
         self,
         # Backbone hyperparameters from the image
@@ -972,11 +973,11 @@ class eSEN(nn.Module):
         reduce: str = "sum",  # or "mean"
     ):
         super().__init__()
-        
+
         # Set default dataset list if not provided
         if dataset_list is None:
             dataset_list = ["default"]
-        
+
         # Initialize backbone
         self.backbone = eSCNMDBackbone(
             max_num_elements=max_num_elements,
@@ -1011,23 +1012,18 @@ class eSEN(nn.Module):
             radius_pbc_version=radius_pbc_version,
             always_use_pbc=always_use_pbc,
         )
-        
+
         # Initialize MLP Energy Head
-        self.energy_head = Linear_Energy_Head(
-            backbone=self.backbone,
-            reduce=reduce
-        )
+        self.energy_head = Linear_Energy_Head(backbone=self.backbone, reduce=reduce)
         if direct_forces:
-            self.force_head = Linear_Force_Head(
-                backbone=self.backbone
-            )
+            self.force_head = Linear_Force_Head(backbone=self.backbone)
         else:
             self.force_head = None
 
     def forward(self, data_dict):
         """
         Forward pass through backbone and energy head
-        
+
         Args:
             data_dict: Dictionary containing input data with keys:
                 - pos: atomic positions [N, 3]
@@ -1038,20 +1034,23 @@ class eSEN(nn.Module):
                 - dataset: dataset indices [batch_size] (optional)
                 - natoms: number of atoms per system [batch_size]
                 - cell: unit cell [batch_size, 3, 3] (if periodic)
-                
+
         Returns:
             Dictionary with predicted energy: {"energy": energy_tensor}
         """
         # Get embeddings from backbone
         embeddings = self.backbone(data_dict)
-        
+
         # Predict energy using head
-        energy_output = self.energy_head(data_dict, embeddings)['energy']
-        force_output = self.force_head(data_dict, embeddings)['forces'] if self.force_head else None
+        energy_output = self.energy_head(data_dict, embeddings)["energy"]
+        force_output = (
+            self.force_head(data_dict, embeddings)["forces"]
+            if self.force_head
+            else None
+        )
         return energy_output, force_output
 
     @property
     def num_params(self):
         """Total number of parameters in the model"""
         return sum(p.numel() for p in self.parameters())
-

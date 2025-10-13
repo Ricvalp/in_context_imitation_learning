@@ -91,11 +91,15 @@ class CheckpointManager:
             torch.save(payload, path)
 
         if self.top_k > 0 and metric is not None:
-            self._update_topk(metric=metric, payload=payload, epoch=epoch, global_step=global_step)
+            self._update_topk(
+                metric=metric, payload=payload, epoch=epoch, global_step=global_step
+            )
 
         return path
 
-    def load(self, path: str | Path, map_location: Optional[str | torch.device] = None) -> dict:
+    def load(
+        self, path: str | Path, map_location: Optional[str | torch.device] = None
+    ) -> dict:
         """Load a checkpoint payload from disk.
 
         Args:
@@ -128,13 +132,13 @@ class CheckpointManager:
         entries = self._topk_entries
         if len(entries) >= self.top_k:
             worst_metric = entries[-1]["metric"]  # type: ignore[index]
-            is_better = metric > worst_metric if self.maximize_metric else metric < worst_metric
+            is_better = (
+                metric > worst_metric if self.maximize_metric else metric < worst_metric
+            )
             if not is_better:
                 return
 
-        filename = (
-            f"{self._base_prefix}_epoch{epoch:04d}_step{global_step:06d}_metric{metric:.6f}.pt"
-        )
+        filename = f"{self._base_prefix}_epoch{epoch:04d}_step{global_step:06d}_metric{metric:.6f}.pt"
         path = self.directory / filename
         torch.save(payload, path)
 

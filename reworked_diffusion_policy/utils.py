@@ -228,14 +228,16 @@ def log_pointcloud_wandb(
     all_chunks = [base_points]
 
     if gt_actions is not None:
-        gt_points = _actions_to_points(gt_actions, np.array([0.0, 255.0, 0.0], dtype=np.float32))
+        gt_points = _actions_to_points(
+            gt_actions, np.array([0.0, 255.0, 0.0], dtype=np.float32)
+        )
         all_chunks.append(gt_points)
 
-    pred_points = _actions_to_points(pred_actions, np.array([255.0, 0.0, 0.0], dtype=np.float32))
+    pred_points = _actions_to_points(
+        pred_actions, np.array([255.0, 0.0, 0.0], dtype=np.float32)
+    )
     all_chunks.append(pred_points)
 
     all_points = np.concatenate(all_chunks, axis=0)
 
-    wandb_run.log(
-        {f"{tag}/pointcloud": wandb.Object3D(all_points.astype(np.float32))}
-    )
+    wandb_run.log({f"{tag}/pointcloud": wandb.Object3D(all_points.astype(np.float32))})

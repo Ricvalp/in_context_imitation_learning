@@ -44,10 +44,12 @@ flags.DEFINE_integer("sample_points", None, "Number of points to sample per clou
 flags.DEFINE_integer("num_workers", None, "Number of dataloader workers")
 flags.DEFINE_integer("num_inference_steps", None, "Override sampling steps")
 flags.DEFINE_bool("enable_viser", None, "Enable viser visualization during eval")
-flags.DEFINE_string("device", None, "Device to train on (cpu or cuda)" )
+flags.DEFINE_string("device", None, "Device to train on (cpu or cuda)")
 flags.DEFINE_string("checkpoint_dir", None, "Override checkpoint directory")
 flags.DEFINE_integer("checkpoint_interval", None, "Override checkpoint save interval")
-flags.DEFINE_multi_string("task", [], "RLBench task names to include when reading datasets")
+flags.DEFINE_multi_string(
+    "task", [], "RLBench task names to include when reading datasets"
+)
 
 
 def _apply_overrides(cfg: ConfigDict) -> ConfigDict:
@@ -90,7 +92,9 @@ def _apply_overrides(cfg: ConfigDict) -> ConfigDict:
     return cfg
 
 
-def _to_device(batch: Dict[str, torch.Tensor], device: torch.device) -> Dict[str, torch.Tensor]:
+def _to_device(
+    batch: Dict[str, torch.Tensor], device: torch.device
+) -> Dict[str, torch.Tensor]:
     """Move every tensor in ``batch`` to ``device`` using non-blocking copies.
 
     Args:
@@ -220,7 +224,10 @@ def evaluate(
                     preds[0].cpu(),
                 )
 
-            if cfg.eval.max_batches is not None and batch_idx + 1 >= cfg.eval.max_batches:
+            if (
+                cfg.eval.max_batches is not None
+                and batch_idx + 1 >= cfg.eval.max_batches
+            ):
                 break
 
     if vis_sample is not None:
@@ -234,7 +241,11 @@ def evaluate(
                 axes_length=cfg.eval.axes_length,
                 axes_radius=cfg.eval.axes_radius,
             )
-        if wandb_run is not None and cfg.logging.enable_wandb and cfg.logging.log_pointcloud_eval:
+        if (
+            wandb_run is not None
+            and cfg.logging.enable_wandb
+            and cfg.logging.log_pointcloud_eval
+        ):
             log_pointcloud_wandb(
                 wandb_run=wandb_run,
                 point_cloud=pc,
@@ -335,7 +346,9 @@ def train(argv) -> None:
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.training.grad_clip_norm)
+            torch.nn.utils.clip_grad_norm_(
+                model.parameters(), cfg.training.grad_clip_norm
+            )
             optimizer.step()
 
             if ema_helper is not None:
@@ -377,9 +390,14 @@ def train(argv) -> None:
             last_eval_metric = eval_loss
             epoch_iter.set_postfix(eval_mse=f"{eval_loss:.6f}")
             if wandb_run is not None:
-                wandb_run.log({"eval/mse": eval_loss, "train/epoch": epoch}, step=global_step)
+                wandb_run.log(
+                    {"eval/mse": eval_loss, "train/epoch": epoch}, step=global_step
+                )
 
-        if cfg.checkpoint.save_every > 0 and (epoch + 1) % cfg.checkpoint.save_every == 0:
+        if (
+            cfg.checkpoint.save_every > 0
+            and (epoch + 1) % cfg.checkpoint.save_every == 0
+        ):
             ckpt_path = checkpoint_manager.save(
                 model=model,
                 optimizer=optimizer,

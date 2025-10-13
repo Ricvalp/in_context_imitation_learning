@@ -10,20 +10,26 @@ from .linear import PlatonicLinear
 from .groups import PLATONIC_GROUPS
 
 
-def drop_path(x, drop_prob: float = 0., training: bool = False, scale_by_keep: bool = True):
+def drop_path(
+    x, drop_prob: float = 0.0, training: bool = False, scale_by_keep: bool = True
+):
     """Drop paths (Stochastic Depth) per sample."""
-    if drop_prob == 0. or not training:
+    if drop_prob == 0.0 or not training:
         return x
     keep_prob = 1 - drop_prob
-    shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
+    shape = (x.shape[0],) + (1,) * (
+        x.ndim - 1
+    )  # work with diff dim tensors, not just 2D ConvNets
     random_tensor = x.new_empty(shape).bernoulli_(keep_prob)
     if keep_prob > 0.0 and scale_by_keep:
         random_tensor.div_(keep_prob)
     return x * random_tensor
 
+
 class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks)."""
-    def __init__(self, drop_prob: float = 0., scale_by_keep: bool = True):
+
+    def __init__(self, drop_prob: float = 0.0, scale_by_keep: bool = True):
         super(DropPath, self).__init__()
         self.drop_prob = drop_prob
         self.scale_by_keep = scale_by_keep
@@ -60,6 +66,7 @@ class PlatonicBlock(nn.Module):
         **kwargs: Additional keyword arguments for the PlatonicConv layer
                   (e.g., freq_sigma, learned_freqs, avg_pool).
     """
+
     def __init__(
         self,
         d_model: int,
@@ -74,7 +81,7 @@ class PlatonicBlock(nn.Module):
         drop_path: float = 0.0,
         layer_scale_init_value: Optional[float] = None,
         freq_sigma: float = 1.0,
-        freq_init: str = 'random',
+        freq_init: str = "random",
         learned_freqs: bool = True,
         mean_aggregation: bool = False,
         attention: bool = False,
@@ -91,15 +98,21 @@ class PlatonicBlock(nn.Module):
 
         # Validate total dimensions against group size and heads
         if d_model % self.num_G != 0:
-            raise ValueError(f"d_model ({d_model}) must be divisible by group size ({self.num_G}).")
+            raise ValueError(
+                f"d_model ({d_model}) must be divisible by group size ({self.num_G})."
+            )
         if dim_feedforward % self.num_G != 0:
-            raise ValueError(f"dim_feedforward ({dim_feedforward}) must be divisible by group size ({self.num_G}).")
+            raise ValueError(
+                f"dim_feedforward ({dim_feedforward}) must be divisible by group size ({self.num_G})."
+            )
         if d_model % (nhead) != 0:
-            raise ValueError(f"d_model ({d_model}) must be divisible by num_head = {nhead}.")
-        
+            raise ValueError(
+                f"d_model ({d_model}) must be divisible by num_head = {nhead}."
+            )
+
         # Calculate per-group-element dimensions
         self.dim_per_g = d_model // self.num_G
-    
+
         # --- Equivariant Sub-Modules ---
         self.interaction = PlatonicConv(
             in_channels=d_model,
@@ -118,8 +131,7 @@ class PlatonicBlock(nn.Module):
 
         if conditioning:
             self.adaLN_modulation = nn.Sequential(
-                nn.SiLU(),
-                nn.Linear(d_model, 6 * d_model, bias=True)
+                nn.SiLU(), nn.Linear(d_model, 6 * d_model, bias=True)
             )
             # # Back to old version with init to zeros
             # self.adaLN_modulation = nn.Linear(d_model, 6 * d_model)
@@ -142,12 +154,23 @@ class PlatonicBlock(nn.Module):
         self.activation = activation
 
         # --- DropPath and LayerScale ---
-        self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
-        self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
-        
-        self.gamma_1 = nn.Parameter(layer_scale_init_value * torch.ones((d_model)), requires_grad=True) if layer_scale_init_value is not None else None
-        self.gamma_2 = nn.Parameter(layer_scale_init_value * torch.ones((d_model)), requires_grad=True) if layer_scale_init_value is not None else None
+        self.drop_path1 = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+        self.drop_path2 = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
+        self.gamma_1 = (
+            nn.Parameter(
+                layer_scale_init_value * torch.ones((d_model)), requires_grad=True
+            )
+            if layer_scale_init_value is not None
+            else None
+        )
+        self.gamma_2 = (
+            nn.Parameter(
+                layer_scale_init_value * torch.ones((d_model)), requires_grad=True
+            )
+            if layer_scale_init_value is not None
+            else None
+        )
 
     def forward(
         self,
@@ -156,7 +179,7 @@ class PlatonicBlock(nn.Module):
         batch: Optional[Tensor] = None,
         mask: Optional[Tensor] = None,
         conditioning: Optional[Tensor] = None,
-        avg_num_nodes = 1.0
+        avg_num_nodes=1.0,
     ) -> Tensor:
         """
         Args:
@@ -181,7 +204,9 @@ class PlatonicBlock(nn.Module):
             # 1. Interaction Block (Pre-Norm)
             normed_x = self._normalize(x, self.norm1)
             normed_x = self._apply_condition(normed_x, shift_msa, scale_msa)
-            interaction_out = self._interaction_block(normed_x, pos, batch, mask, avg_num_nodes)
+            interaction_out = self._interaction_block(
+                normed_x, pos, batch, mask, avg_num_nodes
+            )
             if self.gamma_1 is not None:
                 interaction_out = self.gamma_1 * interaction_out
             residual = self.drop_path1(interaction_out)
@@ -197,7 +222,9 @@ class PlatonicBlock(nn.Module):
             x = x + (gate_ffn * residual if gate_ffn is not None else residual)
         else:
             # 1. Interaction Block (Post-Norm)
-            interaction_out = self._interaction_block(x, pos, batch, mask, avg_num_nodes)
+            interaction_out = self._interaction_block(
+                x, pos, batch, mask, avg_num_nodes
+            )
             if self.gamma_1 is not None:
                 interaction_out = self.gamma_1 * interaction_out
             residual = self.drop_path1(interaction_out)
@@ -213,24 +240,32 @@ class PlatonicBlock(nn.Module):
             x = x + (gate_ffn * residual if gate_ffn is not None else residual)
             x = self._normalize(x, self.norm2)
             x = self._apply_condition(x, shift_ffn, scale_ffn)
-        
+
         return x
 
     @staticmethod
-    def _apply_condition(x: Tensor, shift: Optional[Tensor], scale: Optional[Tensor]) -> Tensor:
+    def _apply_condition(
+        x: Tensor, shift: Optional[Tensor], scale: Optional[Tensor]
+    ) -> Tensor:
         if shift is None or scale is None:
             return x
         return x * (1 + scale) + shift
 
-    def _broadcast_condition(self, params: Tensor, x: Tensor, batch: Optional[Tensor]) -> Tensor:
+    def _broadcast_condition(
+        self, params: Tensor, x: Tensor, batch: Optional[Tensor]
+    ) -> Tensor:
         params = params.to(dtype=x.dtype)
         if x.dim() == 3:
             return params[:, None, :].expand(-1, x.shape[1], -1)
         if x.dim() == 2:
             if batch is None:
-                raise ValueError("Batch indices are required for graph mode conditioning.")
+                raise ValueError(
+                    "Batch indices are required for graph mode conditioning."
+                )
             return params[batch]
-        raise ValueError(f"Unsupported tensor rank {x.dim()} for conditioning broadcast.")
+        raise ValueError(
+            f"Unsupported tensor rank {x.dim()} for conditioning broadcast."
+        )
 
     def _normalize(self, x: Tensor, norm_layer: nn.LayerNorm) -> Tensor:
         """Helper to apply LayerNorm on the per-group-element dimension."""
@@ -243,10 +278,17 @@ class PlatonicBlock(nn.Module):
         return normed_reshaped.view(*leading_dims, -1)
 
     def _interaction_block(
-        self, x: Tensor, pos: Tensor, batch: Optional[Tensor], mask: Optional[Tensor], avg_num_nodes = 1.0
+        self,
+        x: Tensor,
+        pos: Tensor,
+        batch: Optional[Tensor],
+        mask: Optional[Tensor],
+        avg_num_nodes=1.0,
     ) -> Tensor:
         """Wrapper for the PlatonicConv layer."""
-        interaction_output = self.interaction(x, pos, batch=batch, mask=mask, avg_num_nodes=avg_num_nodes)
+        interaction_output = self.interaction(
+            x, pos, batch=batch, mask=mask, avg_num_nodes=avg_num_nodes
+        )
         return self.dropout1(interaction_output)
 
     def _ff_block(self, x: Tensor) -> Tensor:

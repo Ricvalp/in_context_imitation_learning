@@ -58,7 +58,9 @@ class DiffusionPolicy(nn.Module):
         )
 
         if len(cfg.state_mlp_hidden) == 0:
-            raise ValueError("state_mlp_hidden must contain at least one hidden/output dim")
+            raise ValueError(
+                "state_mlp_hidden must contain at least one hidden/output dim"
+            )
 
         state_dims = (cfg.agent_dim, *cfg.state_mlp_hidden)
         self.encoder = ObservationEncoder(
@@ -90,7 +92,9 @@ class DiffusionPolicy(nn.Module):
         self._normalizer_ready = False
 
     # ------------------------------------------------------------------
-    def encode_observation(self, point_clouds: torch.Tensor, agent_pos: torch.Tensor) -> torch.Tensor:
+    def encode_observation(
+        self, point_clouds: torch.Tensor, agent_pos: torch.Tensor
+    ) -> torch.Tensor:
         """Encode stacked observations into a global conditioning vector.
 
         Args:
@@ -113,7 +117,9 @@ class DiffusionPolicy(nn.Module):
             param.requires_grad_(False)
         self._normalizer_ready = True
 
-    def compute_loss(self, batch: Dict[str, torch.Tensor]) -> tuple[torch.Tensor, Dict[str, float]]:
+    def compute_loss(
+        self, batch: Dict[str, torch.Tensor]
+    ) -> tuple[torch.Tensor, Dict[str, float]]:
         """Compute the training objective and scalar metrics for ``batch``.
 
         Args:
@@ -134,7 +140,9 @@ class DiffusionPolicy(nn.Module):
         )
         actions_norm = self.normalizer["action"].normalize(actions)
 
-        global_cond = self.encode_observation(obs_norm["point_clouds"], obs_norm["agent_pos"])
+        global_cond = self.encode_observation(
+            obs_norm["point_clouds"], obs_norm["agent_pos"]
+        )
 
         noise = torch.randn_like(actions_norm)
         batch_size = actions.shape[0]
@@ -155,7 +163,9 @@ class DiffusionPolicy(nn.Module):
         return loss, {"train_mse": float(loss.detach().cpu().item())}
 
     @torch.no_grad()
-    def sample(self, point_clouds: torch.Tensor, agent_pos: torch.Tensor) -> torch.Tensor:
+    def sample(
+        self, point_clouds: torch.Tensor, agent_pos: torch.Tensor
+    ) -> torch.Tensor:
         """Generate denoised action trajectories conditioned on observations.
 
         Args:
@@ -173,7 +183,9 @@ class DiffusionPolicy(nn.Module):
         obs_norm = self.normalizer.normalize(
             {"point_clouds": point_clouds, "agent_pos": agent_pos}
         )
-        global_cond = self.encode_observation(obs_norm["point_clouds"], obs_norm["agent_pos"])
+        global_cond = self.encode_observation(
+            obs_norm["point_clouds"], obs_norm["agent_pos"]
+        )
 
         trajectory = torch.randn(
             batch_size,
@@ -203,7 +215,9 @@ class DiffusionPolicy(nn.Module):
         Returns:
             ``_IncompatibleKeys`` tuple describing missing/unexpected keys.
         """
-        has_normalizer = any(key.startswith("normalizer.params_dict") for key in state_dict.keys())
+        has_normalizer = any(
+            key.startswith("normalizer.params_dict") for key in state_dict.keys()
+        )
 
         restored_normalizer = None
         restored_flag = self._normalizer_ready
@@ -238,7 +252,9 @@ class DiffusionPolicy(nn.Module):
                 )
             if unexpected_keys:
                 error_lines.append(
-                    "Unexpected key(s) in state_dict: " + ", ".join(unexpected_keys) + "."
+                    "Unexpected key(s) in state_dict: "
+                    + ", ".join(unexpected_keys)
+                    + "."
                 )
             error_msg = "\n\t".join(error_lines)
             raise RuntimeError(

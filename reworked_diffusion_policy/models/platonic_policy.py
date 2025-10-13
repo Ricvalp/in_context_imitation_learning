@@ -16,7 +16,9 @@ from .unet1d import ConditionalUNet1D
 from ..normalization import LinearNormalizer
 
 
-def _make_mlp(sizes: Sequence[int], activation=nn.ReLU, layer_norm: bool = False) -> nn.Sequential:
+def _make_mlp(
+    sizes: Sequence[int], activation=nn.ReLU, layer_norm: bool = False
+) -> nn.Sequential:
     """Create an MLP with optional layer norm between linear layers."""
     layers: list[nn.Module] = []
     for idx in range(len(sizes) - 1):
@@ -67,9 +69,13 @@ class PlatonicObservationEncoder(nn.Module):
                 )
             b, tobs, npts, feat = point_clouds.shape
             if tobs != self.n_obs_steps:
-                raise ValueError(f"Expected {self.n_obs_steps} observation steps, received {tobs}")
+                raise ValueError(
+                    f"Expected {self.n_obs_steps} observation steps, received {tobs}"
+                )
             if feat < 3:
-                raise ValueError("Point clouds must contain xyz coordinates in the first three channels")
+                raise ValueError(
+                    "Point clouds must contain xyz coordinates in the first three channels"
+                )
 
             pos = point_clouds[..., :3]
             if self.scalar_feature_dim > 0:
@@ -102,11 +108,15 @@ class PlatonicObservationEncoder(nn.Module):
                     f"received tensor with shape {tuple(point_clouds.shape)}"
                 )
             if point_sample_idx is None or point_obs_idx is None:
-                raise ValueError("Sparse mode requires point_sample_idx and point_obs_idx tensors")
+                raise ValueError(
+                    "Sparse mode requires point_sample_idx and point_obs_idx tensors"
+                )
 
             total_points, feat = point_clouds.shape
             if feat < 3:
-                raise ValueError("Sparse point clouds must contain xyz coordinates in the first three channels")
+                raise ValueError(
+                    "Sparse point clouds must contain xyz coordinates in the first three channels"
+                )
 
             b = agent_pos.shape[0]
             tobs = self.n_obs_steps
@@ -120,7 +130,12 @@ class PlatonicObservationEncoder(nn.Module):
                         f"Expected {self.scalar_feature_dim} scalar point features, received {scalars.shape[-1]}"
                     )
             else:
-                scalars = point_clouds.new_zeros(total_points, 0, device=point_clouds.device, dtype=point_clouds.dtype)
+                scalars = point_clouds.new_zeros(
+                    total_points,
+                    0,
+                    device=point_clouds.device,
+                    dtype=point_clouds.dtype,
+                )
 
             frame_ids = point_sample_idx * tobs + point_obs_idx
             max_frame_id = int(frame_ids.max().item()) if frame_ids.numel() > 0 else -1
@@ -240,7 +255,9 @@ class PlatonicDiffusionPolicy(nn.Module):
         )
 
         if len(cfg.state_mlp_hidden) == 0:
-            raise ValueError("state_mlp_hidden must contain at least one hidden/output dim")
+            raise ValueError(
+                "state_mlp_hidden must contain at least one hidden/output dim"
+            )
 
         state_dims = (cfg.agent_dim, *cfg.state_mlp_hidden)
         self.encoder = PlatonicObservationEncoder(
@@ -296,7 +313,9 @@ class PlatonicDiffusionPolicy(nn.Module):
             param.requires_grad_(False)
         self._normalizer_ready = True
 
-    def compute_loss(self, batch: Dict[str, torch.Tensor]) -> tuple[torch.Tensor, Dict[str, float]]:
+    def compute_loss(
+        self, batch: Dict[str, torch.Tensor]
+    ) -> tuple[torch.Tensor, Dict[str, float]]:
         """Compute the diffusion loss for a batch."""
         if not self._normalizer_ready:
             raise RuntimeError("Normalizer must be set before training")
@@ -383,7 +402,9 @@ class PlatonicDiffusionPolicy(nn.Module):
 
     def load_state_dict(self, state_dict, strict: bool = True):  # type: ignore[override]
         """Restore the module while gracefully handling missing normaliser weights."""
-        has_normalizer = any(key.startswith("normalizer.params_dict") for key in state_dict.keys())
+        has_normalizer = any(
+            key.startswith("normalizer.params_dict") for key in state_dict.keys()
+        )
 
         restored_normalizer = None
         restored_flag = self._normalizer_ready
@@ -418,7 +439,9 @@ class PlatonicDiffusionPolicy(nn.Module):
                 )
             if unexpected_keys:
                 error_lines.append(
-                    "Unexpected key(s) in state_dict: " + ", ".join(unexpected_keys) + "."
+                    "Unexpected key(s) in state_dict: "
+                    + ", ".join(unexpected_keys)
+                    + "."
                 )
             error_msg = "\n\t".join(error_lines)
             raise RuntimeError(

@@ -43,7 +43,9 @@ class PlatonicTransformer(nn.Module):
             conditioning signal before modulation. If None, conditioning is used as-is.
         **kwargs: Additional keyword arguments for the PlatonicBlock layers
     """
-    def __init__(self,
+
+    def __init__(
+        self,
         # Basic/essential specification:
         input_dim: int,
         input_dim_vec: int,
@@ -54,7 +56,7 @@ class PlatonicTransformer(nn.Module):
         num_layers: int,
         solid_name: str,
         spatial_dim: int = 3,
-        dense_mode: bool = False, # force dense mode, even if batch is provided
+        dense_mode: bool = False,  # force dense mode, even if batch is provided
         # Pooling and readout specification:
         scalar_task_level: str = "graph",
         vector_task_level: str = "node",
@@ -71,7 +73,7 @@ class PlatonicTransformer(nn.Module):
         rope_sigma: float = 1.0,  # if None it is not used
         ape_sigma: float = None,  # if None it is not used
         learned_freqs: bool = True,
-        freq_init: str = 'random',
+        freq_init: str = "random",
         use_key: bool = False,
         # Conditioning specification:
         time_conditioning: bool = False,
@@ -107,18 +109,27 @@ class PlatonicTransformer(nn.Module):
         if time_conditioning:
             self.time_embedder = TimestepEmbedder(hidden_size=hidden_dim)
         if class_conditioning:
-            self.label_embedder = LabelEmbedder(output_dim, hidden_size=hidden_dim, dropout_prob=drop_path_rate)
+            self.label_embedder = LabelEmbedder(
+                output_dim, hidden_size=hidden_dim, dropout_prob=drop_path_rate
+            )
 
         # Global position embedding for fixed patching ViTs
         if ape_sigma is not None:
-            self.ape = APE(hidden_dim, solid_name, ape_sigma, spatial_dim, learned_freqs)
+            self.ape = APE(
+                hidden_dim, solid_name, ape_sigma, spatial_dim, learned_freqs
+            )
         else:
-            self.register_buffer('ape', None)
-               
+            self.register_buffer("ape", None)
+
         # --- Modules ---
         # 1. Input Embedding: Applied before lifting to the group.
         # Maps input features to the per-group-element hidden dimension.
-        self.x_embedder = PlatonicLinear((input_dim + input_dim_vec * spatial_dim) * self.num_G, self.hidden_dim, solid_name, bias=False)
+        self.x_embedder = PlatonicLinear(
+            (input_dim + input_dim_vec * spatial_dim) * self.num_G,
+            self.hidden_dim,
+            solid_name,
+            bias=False,
+        )
 
         # 2. Equivariant Encoder Layers
         # The blocks operate on the total flattened dimension (G * C).
@@ -126,41 +137,51 @@ class PlatonicTransformer(nn.Module):
 
         self.layers = nn.ModuleList()
         for _ in range(num_layers):
-            self.layers.append(PlatonicBlock(
-                d_model=self.hidden_dim,
-                nhead=nhead,
-                dim_feedforward=dim_feedforward,
-                solid_name=solid_name,
-                dropout=dropout,
-                norm_first=norm_first,
-                drop_path=drop_path_rate,
-                layer_scale_init_value=layer_scale_init_value,
-                freq_sigma=rope_sigma,
-                freq_init=freq_init,
-                learned_freqs=learned_freqs,
-                spatial_dims=spatial_dim,
-                mean_aggregation=mean_aggregation,
-                attention=attention,
-                use_key=use_key,
-            ))
-            
+            self.layers.append(
+                PlatonicBlock(
+                    d_model=self.hidden_dim,
+                    nhead=nhead,
+                    dim_feedforward=dim_feedforward,
+                    solid_name=solid_name,
+                    dropout=dropout,
+                    norm_first=norm_first,
+                    drop_path=drop_path_rate,
+                    layer_scale_init_value=layer_scale_init_value,
+                    freq_sigma=rope_sigma,
+                    freq_init=freq_init,
+                    learned_freqs=learned_freqs,
+                    spatial_dims=spatial_dim,
+                    mean_aggregation=mean_aggregation,
+                    attention=attention,
+                    use_key=use_key,
+                )
+            )
+
         if ffn_readout:
             self.scalar_readout = nn.Sequential(
                 PlatonicLinear(self.hidden_dim, self.hidden_dim, solid_name),
                 nn.GELU(),
-                PlatonicLinear(self.hidden_dim, self.num_G * output_dim, solid_name)
+                PlatonicLinear(self.hidden_dim, self.num_G * output_dim, solid_name),
             )
-            
+
             self.vector_readout = nn.Sequential(
                 PlatonicLinear(self.hidden_dim, self.hidden_dim, solid_name),
                 nn.GELU(),
                 PlatonicLinear(self.hidden_dim, self.hidden_dim, solid_name),
                 nn.GELU(),
-                PlatonicLinear(self.hidden_dim, self.num_G * output_dim_vec * spatial_dim, solid_name)
+                PlatonicLinear(
+                    self.hidden_dim,
+                    self.num_G * output_dim_vec * spatial_dim,
+                    solid_name,
+                ),
             )
         else:
-            self.scalar_readout = PlatonicLinear(self.hidden_dim, self.num_G * output_dim, solid_name)
-            self.vector_readout = PlatonicLinear(self.hidden_dim, self.num_G * output_dim_vec * spatial_dim, solid_name)
+            self.scalar_readout = PlatonicLinear(
+                self.hidden_dim, self.num_G * output_dim, solid_name
+            )
+            self.vector_readout = PlatonicLinear(
+                self.hidden_dim, self.num_G * output_dim_vec * spatial_dim, solid_name
+            )
 
         if self.use_cls_token:
             if input_dim > 0:
@@ -173,15 +194,17 @@ class PlatonicTransformer(nn.Module):
             self.register_parameter("cls_scalar", None)
             self.register_buffer("cls_pos", None)
 
-    def forward(self,
-                x: Tensor,
-                pos: Tensor,
-                batch: Optional[torch.Tensor] = None,
-                mask: Optional[Tensor] = None,
-                vec: Optional[Tensor] = None,
-                time_conditioning: Optional[Tensor] = None,
-                class_conditioning: Optional[Tensor] = None,
-                avg_num_nodes: float = 1.0) -> Tensor:
+    def forward(
+        self,
+        x: Tensor,
+        pos: Tensor,
+        batch: Optional[torch.Tensor] = None,
+        mask: Optional[Tensor] = None,
+        vec: Optional[Tensor] = None,
+        time_conditioning: Optional[Tensor] = None,
+        class_conditioning: Optional[Tensor] = None,
+        avg_num_nodes: float = 1.0,
+    ) -> Tensor:
         """
         Forward pass for the Platonic Transformer.
 
@@ -200,7 +223,7 @@ class PlatonicTransformer(nn.Module):
 
         # 1. Convert to dense format if needed
         if self.dense_mode:
-            self._input_was_dense_format = (batch is None)
+            self._input_was_dense_format = batch is None
             x, vec, pos, mask = to_dense_and_mask(x, vec, pos, batch)
             batch = None
         else:
@@ -222,7 +245,9 @@ class PlatonicTransformer(nn.Module):
             if self.cls_pos is not None:
                 pos = torch.cat([self.cls_pos.expand(batch_size, 1, -1), pos], dim=1)
             else:
-                pos = torch.cat([pos.new_zeros(batch_size, 1, pos.shape[-1]), pos], dim=1)
+                pos = torch.cat(
+                    [pos.new_zeros(batch_size, 1, pos.shape[-1]), pos], dim=1
+                )
             if mask is not None:
                 cls_mask = mask.new_ones(batch_size, 1)
                 mask = torch.cat([cls_mask, mask], dim=1)
@@ -230,7 +255,9 @@ class PlatonicTransformer(nn.Module):
         # 2. Lift scalars and vectors, then embed
         x = lift(x, vec, self.group)
         x = self.x_embedder(x)  # [..., N, num_patches * C]
-        x = x + self.ape(pos) if self.ape is not None else x  # Add absolute position embedding
+        x = (
+            x + self.ape(pos) if self.ape is not None else x
+        )  # Add absolute position embedding
 
         # 3. Embed conditioning vector
         t_embed = c_embed = None
@@ -255,7 +282,7 @@ class PlatonicTransformer(nn.Module):
                 batch=batch,
                 mask=mask,
                 conditioning=conditioning,
-                avg_num_nodes=avg_num_nodes
+                avg_num_nodes=avg_num_nodes,
             )
 
         if self.use_cls_token:
@@ -272,9 +299,20 @@ class PlatonicTransformer(nn.Module):
             if self.use_cls_token:
                 scalar_x = cls_feature
             else:
-                scalar_x = pool(x_no_cls, batch, mask_no_cls, avg_num_nodes, self.dense_mode, self.mean_aggregation)
+                scalar_x = pool(
+                    x_no_cls,
+                    batch,
+                    mask_no_cls,
+                    avg_num_nodes,
+                    self.dense_mode,
+                    self.mean_aggregation,
+                )
         else:
-            if not self._input_was_dense_format and self.dense_mode and mask_no_cls is not None:
+            if (
+                not self._input_was_dense_format
+                and self.dense_mode
+                and mask_no_cls is not None
+            ):
                 scalar_x = x_no_cls[mask_no_cls]
             else:
                 scalar_x = x_no_cls
@@ -283,9 +321,20 @@ class PlatonicTransformer(nn.Module):
             if self.use_cls_token:
                 vector_x = cls_feature
             else:
-                vector_x = pool(x_no_cls, batch, mask_no_cls, avg_num_nodes, self.dense_mode, self.mean_aggregation)
+                vector_x = pool(
+                    x_no_cls,
+                    batch,
+                    mask_no_cls,
+                    avg_num_nodes,
+                    self.dense_mode,
+                    self.mean_aggregation,
+                )
         else:
-            if not self._input_was_dense_format and self.dense_mode and mask_no_cls is not None:
+            if (
+                not self._input_was_dense_format
+                and self.dense_mode
+                and mask_no_cls is not None
+            ):
                 vector_x = x_no_cls[mask_no_cls]
             else:
                 vector_x = x_no_cls

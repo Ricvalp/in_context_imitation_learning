@@ -1,5 +1,6 @@
 import torch
 
+
 def scatter_add(src, index, dim_size):
     out_shape = [dim_size] + list(src.shape[1:])
     out = torch.zeros(out_shape, dtype=src.dtype, device=src.device)

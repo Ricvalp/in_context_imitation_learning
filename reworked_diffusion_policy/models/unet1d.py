@@ -134,9 +134,13 @@ class DownBlock(nn.Module):
         self.downsample_out_channels = out_channels
         if downsample:
             self.downsample_out_channels = next_channels
-            self.downsample = nn.Conv1d(out_channels, next_channels, 3, stride=2, padding=1)
+            self.downsample = nn.Conv1d(
+                out_channels, next_channels, 3, stride=2, padding=1
+            )
 
-    def forward(self, x: torch.Tensor, cond: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self, x: torch.Tensor, cond: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Run residual blocks then optionally downsample, returning ``(x, skip)``.
 
         Args:
@@ -186,13 +190,19 @@ class UpBlock(nn.Module):
         self.upsampled_channels = in_channels
         if upsample:
             target_channels = upsample_channels or in_channels
-            self.upsample = nn.ConvTranspose1d(in_channels, target_channels, 4, stride=2, padding=1)
+            self.upsample = nn.ConvTranspose1d(
+                in_channels, target_channels, 4, stride=2, padding=1
+            )
             self.upsampled_channels = target_channels
 
         self.res_blocks = nn.ModuleList(
             [
                 ResidualBlock(
-                    (self.upsampled_channels + skip_channels) if i == 0 else out_channels,
+                    (
+                        (self.upsampled_channels + skip_channels)
+                        if i == 0
+                        else out_channels
+                    ),
                     out_channels,
                     cond_dim,
                     kernel_size=kernel_size,
@@ -202,7 +212,9 @@ class UpBlock(nn.Module):
             ]
         )
 
-    def forward(self, x: torch.Tensor, skip: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, skip: torch.Tensor, cond: torch.Tensor
+    ) -> torch.Tensor:
         """Upsample ``x``, align with ``skip`` and apply residual refinement.
 
         Args:
@@ -322,7 +334,9 @@ class ConditionalUNet1D(nn.Module):
         self.output_norm = nn.GroupNorm(num_groups, hidden_dims[0])
         self.output_proj = nn.Conv1d(hidden_dims[0], input_dim, kernel_size=1)
 
-    def forward(self, sample: torch.Tensor, timesteps: torch.Tensor, global_cond: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, sample: torch.Tensor, timesteps: torch.Tensor, global_cond: torch.Tensor
+    ) -> torch.Tensor:
         """Predict the denoising velocity for ``sample`` given the conditions.
 
         Args:

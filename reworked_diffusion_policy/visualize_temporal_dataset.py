@@ -64,7 +64,9 @@ def _split_point_cloud(tensor: torch.Tensor) -> Tuple[np.ndarray, np.ndarray]:
     return points.astype(np.float32), color_array
 
 
-def _pose_from_tensor(tensor: torch.Tensor) -> Optional[Tuple[np.ndarray, np.ndarray, Optional[float]]]:
+def _pose_from_tensor(
+    tensor: torch.Tensor,
+) -> Optional[Tuple[np.ndarray, np.ndarray, Optional[float]]]:
     """Extract ``(position, quaternion wxyz, gripper)`` from a tensor.
 
     Args:
@@ -79,7 +81,9 @@ def _pose_from_tensor(tensor: torch.Tensor) -> Optional[Tuple[np.ndarray, np.nda
     position = array[:3]
     if array.shape[0] >= 7:
         quat_xyzw = array[3:7]
-        wxyz = np.array([quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]], dtype=np.float32)
+        wxyz = np.array(
+            [quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]], dtype=np.float32
+        )
         norm = np.linalg.norm(wxyz)
         if norm > 1e-6:
             wxyz = wxyz / norm
@@ -156,7 +160,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "interactively using viser."
         )
     )
-    parser.add_argument("--dataset-path", type=str, required=True, help="Path to an .h5 file or root directory of cached tasks.")
+    parser.add_argument(
+        "--dataset-path",
+        type=str,
+        required=True,
+        help="Path to an .h5 file or root directory of cached tasks.",
+    )
     parser.add_argument(
         "--task",
         dest="tasks",
@@ -164,17 +173,60 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=[],
         help="Task name to include when dataset-path is a directory. Repeat for multiple tasks.",
     )
-    parser.add_argument("--batch-size", type=int, default=4, help="Batch size for the data loader.")
-    parser.add_argument("--num-workers", type=int, default=0, help="Number of worker processes for data loading.")
-    parser.add_argument("--sample-points", type=int, default=4096, help="Number of points sampled per observation point cloud.")
-    parser.add_argument("--n-obs-steps", type=int, default=2, help="Number of observation steps included per sample.")
-    parser.add_argument("--action-horizon", type=int, default=16, help="Number of future actions per sample.")
-    parser.add_argument("--no-point-colors", action="store_true", help="Disable point colors in the dataset sampler.")
-    parser.add_argument("--point-size", type=float, default=0.003, help="Rendered point size inside viser.")
-    parser.add_argument("--axes-length", type=float, default=0.08, help="Axis length for pose frames.")
-    parser.add_argument("--axes-radius", type=float, default=0.003, help="Axis radius for pose frames.")
-    parser.add_argument("--no-shuffle", action="store_true", help="Disable shuffling when drawing batches from the loader.")
-    parser.add_argument("--pin-memory", action="store_true", help="Pin memory in the PyTorch data loader.")
+    parser.add_argument(
+        "--batch-size", type=int, default=4, help="Batch size for the data loader."
+    )
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=0,
+        help="Number of worker processes for data loading.",
+    )
+    parser.add_argument(
+        "--sample-points",
+        type=int,
+        default=4096,
+        help="Number of points sampled per observation point cloud.",
+    )
+    parser.add_argument(
+        "--n-obs-steps",
+        type=int,
+        default=2,
+        help="Number of observation steps included per sample.",
+    )
+    parser.add_argument(
+        "--action-horizon",
+        type=int,
+        default=16,
+        help="Number of future actions per sample.",
+    )
+    parser.add_argument(
+        "--no-point-colors",
+        action="store_true",
+        help="Disable point colors in the dataset sampler.",
+    )
+    parser.add_argument(
+        "--point-size",
+        type=float,
+        default=0.003,
+        help="Rendered point size inside viser.",
+    )
+    parser.add_argument(
+        "--axes-length", type=float, default=0.08, help="Axis length for pose frames."
+    )
+    parser.add_argument(
+        "--axes-radius", type=float, default=0.003, help="Axis radius for pose frames."
+    )
+    parser.add_argument(
+        "--no-shuffle",
+        action="store_true",
+        help="Disable shuffling when drawing batches from the loader.",
+    )
+    parser.add_argument(
+        "--pin-memory",
+        action="store_true",
+        help="Pin memory in the PyTorch data loader.",
+    )
     return parser.parse_args(argv)
 
 
@@ -197,7 +249,9 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
 
     print("Loading dataset …")
     dataset = RLBenchTemporalH5Dataset(dataset_cfg)
-    print(f"Loaded {len(dataset)} samples from {len(dataset.source_files)} cache file(s).")
+    print(
+        f"Loaded {len(dataset)} samples from {len(dataset.source_files)} cache file(s)."
+    )
 
     dataloader = DataLoader(
         dataset,
@@ -333,7 +387,9 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         except StopIteration:
             loader_iter = iter(dataloader)
             raw_batch = next(loader_iter)
-        current_batch = {key: tensor.detach().cpu() for key, tensor in raw_batch.items()}
+        current_batch = {
+            key: tensor.detach().cpu() for key, tensor in raw_batch.items()
+        }
         batch_counter += 1
         batch_size = current_batch["point_clouds"].shape[0]
         batch_slider.max = max(0, batch_size - 1)

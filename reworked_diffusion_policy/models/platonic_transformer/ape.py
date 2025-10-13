@@ -26,6 +26,7 @@ class APE(nn.Module):
         learned_freqs (bool): If True, the frequencies become learnable parameters instead
                               of a fixed buffer.
     """
+
     def __init__(
         self,
         embed_dim: int,
@@ -68,7 +69,7 @@ class APE(nn.Module):
         # This computes the dot product between each position vector and each frequency vector.
         # pos shape: (..., d) | freqs shape: (d, f) -> angles shape: (..., f)
         # where d = spatial_dims and f = num_frequencies.
-        angles = torch.einsum('...d,df->...f', pos, self.freqs)
+        angles = torch.einsum("...d,df->...f", pos, self.freqs)
 
         # 2. --- Compute sinusoidal features ---
         # The embedding is formed by concatenating the cosine and sine of the angles.
@@ -106,6 +107,7 @@ class PlatonicAPE(nn.Module):
         spatial_dims (int): The number of spatial dimensions of the input positions (e.g., 3).
         learned_freqs (bool): If True, the base frequencies become learnable parameters.
     """
+
     def __init__(
         self,
         embed_dim: int,
@@ -120,20 +122,26 @@ class PlatonicAPE(nn.Module):
         try:
             self.group = PLATONIC_GROUPS[solid_name.lower()]
         except KeyError:
-            raise ValueError(f"Unknown solid '{solid_name}'. Available options are {list(PLATONIC_GROUPS.keys())}")
+            raise ValueError(
+                f"Unknown solid '{solid_name}'. Available options are {list(PLATONIC_GROUPS.keys())}"
+            )
         self.num_G = self.group.G
-        self.register_buffer('group_elements', self.group.elements.to(torch.float32))
+        self.register_buffer("group_elements", self.group.elements.to(torch.float32))
 
         # --- Dimension Setup ---
         self.embed_dim = embed_dim
         self.spatial_dims = spatial_dims
 
         if self.embed_dim % self.num_G != 0:
-            raise ValueError(f"embed_dim ({self.embed_dim}) must be divisible by group size G ({self.num_G}).")
+            raise ValueError(
+                f"embed_dim ({self.embed_dim}) must be divisible by group size G ({self.num_G})."
+            )
         self.embed_dim_g = self.embed_dim // self.num_G
 
         if self.embed_dim_g % 2 != 0:
-            raise ValueError(f"embed_dim per group element ({self.embed_dim_g}) must be an even number.")
+            raise ValueError(
+                f"embed_dim per group element ({self.embed_dim_g}) must be an even number."
+            )
         self.num_frequencies_g = self.embed_dim_g // 2
 
         # --- Base Frequency Initialization ---
@@ -159,13 +167,13 @@ class PlatonicAPE(nn.Module):
         # group_elements shape: (g, d, d) | freqs shape: (d, f_g)
         # -> freqs_rotated shape: (g, d, f_g)
         # where g=num_G, d=spatial_dims, f_g=num_frequencies_g
-        freqs_rotated = torch.einsum('gij, jf -> gif', self.group_elements, self.freqs)
+        freqs_rotated = torch.einsum("gij, jf -> gif", self.group_elements, self.freqs)
 
         # 2. --- Project positions onto all sets of rotated frequencies ---
         # This computes the dot product for each of the G frequency sets.
         # pos shape: (...d) | freqs_rotated shape: (g, d, f_g)
         # -> angles shape: (...g, f_g)
-        angles = torch.einsum('...d, gdf -> ...gf', pos, freqs_rotated)
+        angles = torch.einsum("...d, gdf -> ...gf", pos, freqs_rotated)
 
         # 3. --- Compute sinusoidal features for each group element ---
         cos_angles = torch.cos(angles)

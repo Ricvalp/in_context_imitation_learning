@@ -9,7 +9,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def _make_mlp(sizes: Sequence[int], *, activation=nn.ReLU, layer_norm: bool = False) -> nn.Sequential:
+def _make_mlp(
+    sizes: Sequence[int], *, activation=nn.ReLU, layer_norm: bool = False
+) -> nn.Sequential:
     """Construct a fully-connected stack with optional layer norm blocks.
 
     Args:
@@ -103,7 +105,9 @@ class ObservationEncoder(nn.Module):
         self.state_mlp = _make_mlp(state_dims, activation=nn.ReLU, layer_norm=False)
         self.state_out_dim = state_dims[-1]
 
-    def forward(self, point_clouds: torch.Tensor, agent_pos: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, point_clouds: torch.Tensor, agent_pos: torch.Tensor
+    ) -> torch.Tensor:
         """Encode stacked observations of point clouds and agent state.
 
         Args:

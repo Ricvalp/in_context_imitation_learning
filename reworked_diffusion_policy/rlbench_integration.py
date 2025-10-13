@@ -112,7 +112,9 @@ class ObservationProcessor:
         self.cfg = cfg
         self._mask_filter: Optional[Callable[[np.ndarray], np.ndarray]] = None
 
-    def set_mask_filter(self, mask_filter: Optional[Callable[[np.ndarray], np.ndarray]]) -> None:
+    def set_mask_filter(
+        self, mask_filter: Optional[Callable[[np.ndarray], np.ndarray]]
+    ) -> None:
         """Set an optional binary mask filter applied to each camera image.
 
         Args:
