@@ -24,11 +24,16 @@ from ml_collections import ConfigDict
 
 from equi_icil.config import get_config as get_default_config
 from equi_icil.platonic_config import get_config as get_platonic_config
+from equi_icil.in_context_diffusion_config import (
+    get_config as get_in_context_diffusion_config,
+)
 from equi_icil.policies import (
     DiffusionPolicy,
     DiffusionPolicyConfig,
     PlatonicDiffusionPolicy,
     PlatonicDiffusionPolicyConfig,
+    InContextDiffusionPolicy,
+    InContextDiffusionPolicyConfig,
     InContextPlatonicDiffusionPolicy,
     InContextPlatonicPolicyConfig,
 )
@@ -76,10 +81,13 @@ def _load_config(path: str | None) -> ConfigDict:
         raise TypeError("get_config() must return an ml_collections.ConfigDict")
 
     base_cfg = get_default_config()
-    if getattr(loaded_cfg, "model", None) is not None and hasattr(
-        loaded_cfg.model, "transformer"
-    ):
-        base_cfg = get_platonic_config()
+    model_cfg = getattr(loaded_cfg, "model", None)
+    if model_cfg is not None:
+        policy_name = getattr(model_cfg, "policy", "")
+        if policy_name == "in_context_diffusion":
+            base_cfg = get_in_context_diffusion_config()
+        elif hasattr(model_cfg, "transformer"):
+            base_cfg = get_platonic_config()
 
     base_cfg.update(loaded_cfg)
     return base_cfg
@@ -185,6 +193,52 @@ def _build_platonic_model(cfg: ConfigDict) -> PlatonicDiffusionPolicy:
     return PlatonicDiffusionPolicy(model_cfg)
 
 
+def _build_in_context_diffusion_model(
+    cfg: ConfigDict,
+) -> InContextDiffusionPolicy:
+    """Construct the Transformer-based in-context diffusion policy."""
+
+    dataset_mode = getattr(cfg, "dataset_mode", "dense")
+    if dataset_mode != "dense":
+        raise ValueError("In-context diffusion transformer requires dense datasets.")
+
+    transformer_cfg = cfg.model.transformer
+    in_ctx_cfg = cfg.model.in_context
+    if transformer_cfg.hidden_dim % transformer_cfg.num_heads != 0:
+        raise ValueError(
+            "transformer.hidden_dim must be divisible by transformer.num_heads"
+        )
+
+    model_cfg = InContextDiffusionPolicyConfig(
+        horizon=cfg.horizon,
+        n_obs_steps=cfg.n_obs_steps,
+        sample_points=cfg.sample_points,
+        action_dim=cfg.action_dim,
+        agent_dim=cfg.agent_dim,
+        use_point_colors=cfg.use_point_colors,
+        transformer_hidden_dim=transformer_cfg.hidden_dim,
+        transformer_num_layers=transformer_cfg.num_layers,
+        transformer_num_heads=transformer_cfg.num_heads,
+        transformer_mlp_dim=transformer_cfg.mlp_dim,
+        transformer_dropout=transformer_cfg.dropout,
+        transformer_attention_dropout=transformer_cfg.attention_dropout,
+        transformer_activation=transformer_cfg.activation,
+        transformer_norm_first=transformer_cfg.norm_first,
+        transformer_mask_action_to_obs=getattr(
+            transformer_cfg, "mask_action_to_obs", False
+        ),
+        transformer_layer_norm_eps=getattr(
+            transformer_cfg, "layer_norm_eps", 1e-5
+        ),
+        scalar_embedding_hidden_dim=in_ctx_cfg.scalar_embedding_hidden_dim,
+        time_embedding_base=in_ctx_cfg.time_embedding_base,
+        diffusion_embedding_base=in_ctx_cfg.diffusion_embedding_base,
+        num_inference_steps=cfg.model.num_inference_steps,
+        noise_scheduler_cfg=dict(cfg.model.noise_scheduler),
+    )
+    return InContextDiffusionPolicy(model_cfg)
+
+
 def _build_in_context_platonic_model(cfg: ConfigDict) -> InContextPlatonicDiffusionPolicy:
     """Construct the in-context Platonic Transformer diffusion policy."""
 
@@ -276,13 +330,21 @@ def _infer_model_type(cfg: ConfigDict, payload: dict) -> str:
 
     model_cfg = getattr(cfg, "model", None)
     if model_cfg is not None:
-        if getattr(model_cfg, "policy", "") == "in_context":
+        policy_name = getattr(model_cfg, "policy", "")
+        if policy_name == "in_context_diffusion":
+            return "diffusion_in_context"
+        if policy_name == "in_context":
             return "platonic_in_context"
         if hasattr(model_cfg, "transformer"):
             return "platonic"
 
     state_dict = payload.get("model")
     if isinstance(state_dict, dict):
+        keys = list(state_dict.keys())
+        if any(key.startswith("point_encoder.") for key in keys) or any(
+            key.startswith("diffusion_step_proj.") for key in keys
+        ):
+            return "diffusion_in_context"
         if any(key.startswith("world_time_embedder") for key in state_dict.keys()):
             return "platonic_in_context"
         if any(key.startswith("transformer.") for key in state_dict.keys()):
@@ -303,6 +365,8 @@ def _build_model(cfg: ConfigDict, model_type: str):
         return _build_platonic_model(cfg)
     if model_type == "platonic_in_context":
         return _build_in_context_platonic_model(cfg)
+    if model_type == "diffusion_in_context":
+        return _build_in_context_diffusion_model(cfg)
     if model_type != "diffusion":
         raise ValueError(f"Unsupported model type '{model_type}'")
     return _build_diffusion_model(cfg)

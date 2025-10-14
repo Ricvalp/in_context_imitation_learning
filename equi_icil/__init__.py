@@ -1,15 +1,17 @@
 """Lightweight 3D diffusion policy training stack."""
 
-from . import config, platonic_config
+from . import config, platonic_config, in_context_diffusion_config
 from .policies import (
     DiffusionPolicy,
     DiffusionPolicyConfig,
     PlatonicDiffusionPolicy,
     PlatonicDiffusionPolicyConfig,
+    InContextDiffusionPolicy,
+    InContextDiffusionPolicyConfig,
     InContextPlatonicDiffusionPolicy,
     InContextPlatonicPolicyConfig,
 )
-from .datasets import (
+from .imitation_datasets import (
     DatasetConfig,
     SparseDatasetConfig,
     RLBenchTemporalH5Dataset,
@@ -31,10 +33,13 @@ from .utils import (
 __all__ = [
     "config",
     "platonic_config",
+    "in_context_diffusion_config",
     "DiffusionPolicy",
     "DiffusionPolicyConfig",
     "PlatonicDiffusionPolicy",
     "PlatonicDiffusionPolicyConfig",
+    "InContextDiffusionPolicy",
+    "InContextDiffusionPolicyConfig",
     "InContextPlatonicDiffusionPolicy",
     "InContextPlatonicPolicyConfig",
     "DatasetConfig",
