@@ -2,30 +2,6 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Train 3D Diffusion Policy",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "reworked_diffusion_policy.train",
-            "justMyCode": true,
-            "args": [
-                "--dataset_path",
-                //  "/mnt/external_storage/robotics/rlbench/temporal/close_drawer/42ac11cdf83fe09eb455ebc06db2c6176f6e7666.h5",
-                "/media/davidknigge/hard-disk2/storage/robotics/rlbench_20tasks_100episodes_16_steps_preprocessed/temporal/",
-                "--task", "close_drawer", "--task", "press_switch", "--task", "close_fridge",
-                "--device",
-                "cuda",
-                "--batch_size",
-                "64",
-                "--epochs",
-                "300",
-                "--config.horizon=16"
-            ],
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "console": "integratedTerminal"
-        },
-        {
             "name": "Train Platonic Diffusion Policy (Sparse)",
             "type": "debugpy",
             "request": "launch",
@@ -54,6 +30,33 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "Train Diffusion Transformer",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/train_diffusion_transformer.py",
+            "justMyCode": true,
+            "args": [
+                "--task",
+                "close_drawer",
+                "--task",
+                "press_switch",
+                "--task",
+                "close_fridge",
+                "--dataset_path",
+                "/mnt/external_storage/robotics/rlbench/temporal/",
+                "--batch_size",
+                "2",
+                "--epochs",
+                "50",
+                "--config.debug.limit_dataset=True",
+                "--config.debug.max_samples_per_task=24"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "console": "integratedTerminal"
+        },
+        {
             "name": "Train Platonic Diffusion Policy",
             "type": "debugpy",
             "request": "launch",
@@ -61,8 +64,8 @@
             "justMyCode": true,
             "args": [
                 "--dataset_path",
-                // "/mnt/external_storage/robotics/rlbench/temporal/",
-                "/media/davidknigge/hard-disk2/storage/robotics/rlbench_20tasks_100episodes_16_steps_preprocessed/temporal/",
+                "/mnt/external_storage/robotics/rlbench/temporal/",
+                // "/media/davidknigge/hard-disk2/storage/robotics/rlbench_20tasks_100episodes_16_steps_preprocessed/temporal/",
                 "--task", "close_drawer", "--task", "press_switch", "--task", "close_fridge",
                 "--device",
                 "cuda",
@@ -100,36 +103,6 @@
                 "100",
                 "--use-ema"
             ],
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "Debug QM9 Regression",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/platonic_transformer/main_qm9_regr.py",
-            "args": [
-                "--log",
-                "False"
-            ],
-            "justMyCode": true,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "Debug QM9 Generation",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/platonic_transformer/main_qm9_gen.py",
-            "args": [
-                "--log",
-                "False"
-            ],
-            "justMyCode": true,
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             },
