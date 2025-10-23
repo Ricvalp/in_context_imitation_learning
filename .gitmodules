@@ -1,0 +1,3 @@
+[submodule "rlbench_data_gen"]
+	path = rlbench_data_gen
+	url = https://github.com/david-knigge/rlbench_data_gen
