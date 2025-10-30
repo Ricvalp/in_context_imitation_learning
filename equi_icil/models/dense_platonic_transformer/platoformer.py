@@ -44,10 +44,10 @@ class DensePlatonicTransformer(nn.Module):
     ) -> None:
         super().__init__()
 
-        if scalar_task_level not in ["node", "graph"]:
-            raise ValueError("scalar_task_level must be 'node' or 'graph'.")
-        if vector_task_level not in ["node", "graph"]:
-            raise ValueError("vector_task_level must be 'node' or 'graph'.")
+        if scalar_task_level not in ["dense", "global"]:
+            raise ValueError("scalar_task_level must be 'dense' or 'global'.")
+        if vector_task_level not in ["dense", "global"]:
+            raise ValueError("vector_task_level must be 'dense' or 'global'.")
 
         # Cache structural metadata shared across the stack.
         self.group = PLATONIC_GROUPS[solid_name.lower()]
@@ -194,35 +194,38 @@ class DensePlatonicTransformer(nn.Module):
             conditioning = class_emb if conditioning is None else conditioning + class_emb
 
         # --- 5. Pass through the stack of dense Platonic blocks ---
-        hidden = embedded
+        tokens = embedded
         for layer in self.layers:
-            hidden = layer(
-                x=hidden,
+            tokens = layer(
+                x=tokens,
                 pos=pos,
                 conditioning=conditioning,
                 token_normaliser=float(max(data_token_count, 1)),
             )  # [B, N', hidden_dim]
 
-        tokens = hidden
-
-        # --- 6. Reduce to graph-level summaries when requested ---
-        if self.scalar_task_level == "graph":
+        # --- 6. Reduce to global features when requested ---
+        if self.scalar_task_level == "global":
             scalar_repr = self._pool_tokens(tokens)  # [B, hidden_dim]
         else:
             scalar_repr = tokens  # [B, N, hidden_dim]
 
-        if self.vector_task_level == "graph":
+        if self.vector_task_level == "global":
             vector_repr = self._pool_tokens(tokens)  # [B, hidden_dim]
         else:
             vector_repr = tokens  # [B, N, hidden_dim]
 
         # --- 7. Decode back to scalar/vector outputs and split group structure ---
+        # Apply linear readout heads.
         scalar_logits = self.scalar_readout(scalar_repr)
         vector_logits = self.vector_readout(vector_repr)
 
+        # Reshape to separate group elements, then read out equivariant features by averaging
+        # over the group dimension.
         scalar_group = scalar_logits.view(*scalar_logits.shape[:-1], self.num_G, self.output_dim)
         scalars_out = readout_scalars(scalar_group, self.group)
 
+        # Reshape to separate group elements, then read out equivariant features by 
+        # projecting through the group.
         vector_group = vector_logits.view(
             *vector_logits.shape[:-1], self.num_G, self.output_dim_vec * self.group.dim)
         vectors_out = readout_vectors(vector_group, self.group)
@@ -230,7 +233,7 @@ class DensePlatonicTransformer(nn.Module):
         return scalars_out, vectors_out
 
     def _pool_tokens(self, tokens: Tensor) -> Tensor:
-        """Aggregate token features into a single graph summary."""
+        """Aggregate token features into a single token."""
         pooled = tokens.sum(dim=1)
         denom = tokens.shape[1]
         if denom == 0:
