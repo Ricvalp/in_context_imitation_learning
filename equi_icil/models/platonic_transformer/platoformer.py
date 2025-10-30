@@ -154,6 +154,7 @@ class PlatonicTransformer(nn.Module):
                     mean_aggregation=mean_aggregation,
                     attention=attention,
                     use_key=use_key,
+                    conditioning=time_conditioning or class_conditioning,
                 )
             )
 
