@@ -60,11 +60,6 @@ def _copy_transformer_to_dense(
         _copy_block_to_dense(src_block, dst_block)
     dense_transformer.scalar_readout.load_state_dict(transformer.scalar_readout.state_dict())
     dense_transformer.vector_readout.load_state_dict(transformer.vector_readout.state_dict())
-    if transformer.use_cls_token and dense_transformer.use_cls_token:
-        if transformer.cls_scalar is not None and dense_transformer.cls_scalar is not None:
-            dense_transformer.cls_scalar.data.copy_(transformer.cls_scalar.data)
-        if transformer.cls_pos is not None and dense_transformer.cls_pos is not None:
-            dense_transformer.cls_pos.data.copy_(transformer.cls_pos.data)
 
 
 @pytest.mark.parametrize("attention", [False, True])
@@ -171,8 +166,7 @@ def test_dense_block_matches_original(attention: bool) -> None:
 
 
 @pytest.mark.parametrize("attention", [False, True])
-@pytest.mark.parametrize("use_cls_token", [False, True])
-def test_dense_transformer_matches_original(attention: bool, use_cls_token: bool) -> None:
+def test_dense_transformer_matches_original(attention: bool) -> None:
     torch.manual_seed(2)
 
     solid = "tetrahedron"
@@ -203,7 +197,7 @@ def test_dense_transformer_matches_original(attention: bool, use_cls_token: bool
         attention=attention,
         time_conditioning=True,
         class_conditioning=False,
-        use_cls_token=use_cls_token,
+        use_cls_token=False,
         dropout=0.0,
         drop_path_rate=0.0,
     )
@@ -223,7 +217,6 @@ def test_dense_transformer_matches_original(attention: bool, use_cls_token: bool
         attention=attention,
         time_conditioning=True,
         class_conditioning=False,
-        use_cls_token=use_cls_token,
         dropout=0.0,
         drop_path_rate=0.0,
     )

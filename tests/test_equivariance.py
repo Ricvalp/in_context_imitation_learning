@@ -27,7 +27,6 @@ def _build_original(solid: str):
         attention=True,
         time_conditioning=False,
         class_conditioning=False,
-        use_cls_token=False,
         dropout=0.0,
         drop_path_rate=0.0,
     )
@@ -52,7 +51,6 @@ def _build_dense(solid: str):
         attention=True,
         time_conditioning=False,
         class_conditioning=False,
-        use_cls_token=False,
         dropout=0.0,
         drop_path_rate=0.0,
     )
